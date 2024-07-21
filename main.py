@@ -4,8 +4,6 @@ import requests
 import json
 
 path = os.path.dirname(os.path.abspath(__file__)) + "\\data"
-connection = None
-dbCursor = None
 
 def initialize():
     if not os.path.exists(path):
@@ -22,8 +20,9 @@ def initialize():
 
     if initializeTables:
         makeTables()
+    return connection, dbCursor
 
-def makeTables():
+def makeTables(dbCursor):
     dbCursor.execute("CREATE TABLE Media(name PRIMARY KEY, type)")
 
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name, page_name, biography,
@@ -43,7 +42,7 @@ def makeTables():
     
     dbCursor.execute("CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number), FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))")
 
-initialize()
+connection, dbCursor = initialize()
 
 result = dbCursor.execute("SELECT username, full_name, biography, media_count, follower_count, following_count, small_profile_pic FROM Profile")
 profiles = result.fetchall()
