@@ -3,7 +3,7 @@ import os
 import requests
 import json
 
-path = os.path.dirname(os.path.abspath(__file__)) + "\\data"
+path = os.path.dirname(os.path.abspath(__file__)) + "\\storage"
 
 def initialize():
     if not os.path.exists(path):
@@ -41,6 +41,14 @@ def makeTables(dbCursor):
                 FOREIGN KEY(media) REFERENCES Media(name), FOREIGN KEY(thumbnail) REFERENCES Media(name))""")
     
     dbCursor.execute("CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number), FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))")
+
+def downloadLink(link, address):
+    try:
+        media = requests.get(link, allow_redirects=True)
+        open(path + address, 'wb').write(media.content)
+        return True
+    except:
+        return False
 
 def listProfiles():
     # Needs change for GUI implementation
