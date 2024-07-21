@@ -42,6 +42,12 @@ def makeTables(dbCursor):
     
     dbCursor.execute("CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number), FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))")
 
+def listProfiles():
+    # Needs change for GUI implementation
+    for profile in profiles:
+        print(profile[0] + ":\n" + profile[1] + "\n" + profile[2] + "\nPosts: " + str(profile[3]) + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5]))
+        print("---------------------------------")
+
 connection, dbCursor = initialize()
 
 result = dbCursor.execute("SELECT username, full_name, biography, media_count, follower_count, following_count, small_profile_pic FROM Profile")
