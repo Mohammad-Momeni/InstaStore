@@ -32,3 +32,6 @@ dbCursor.execute("PRAGMA foreign_keys = ON")
 
 if initializeTables:
     makeTables()
+
+result = dbCursor.execute("SELECT username, full_name, biography, media_count, follower_count, following_count, small_profile_pic FROM Profile")
+profiles = result.fetchall()
