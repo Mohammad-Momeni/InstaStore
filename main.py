@@ -29,7 +29,8 @@ def makeTables(dbCursor):
                 public_email, media_count, follower_count, following_count, original_profile_pic, small_profile_pic,
                 FOREIGN KEY(original_profile_pic) REFERENCES Media(name), FOREIGN KEY(small_profile_pic) REFERENCES Media(name))""")
     
-    dbCursor.execute("CREATE TABLE Post(pk, link, caption, timestamp, isTag, PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))")
+    dbCursor.execute("""CREATE TABLE Post(pk, link, caption, timestamp, isTag,
+                     PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
     dbCursor.execute("""CREATE TABLE Highlight(pk, id, title, cover_image, PRIMARY KEY(pk, id),
                 FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(cover_image) REFERENCES Media(name))""")
@@ -40,9 +41,11 @@ def makeTables(dbCursor):
     dbCursor.execute("""CREATE TABLE Content(id, number, media, thumbnail, PRIMARY KEY(id, number),
                 FOREIGN KEY(media) REFERENCES Media(name), FOREIGN KEY(thumbnail) REFERENCES Media(name))""")
     
-    dbCursor.execute("CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number), FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))")
+    dbCursor.execute("""CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number),
+                     FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))""")
 
 def downloadLink(link, address):
+    # Needs change for GUI implementation
     try:
         media = requests.get(link, allow_redirects=True)
         open(path + address, 'wb').write(media.content)
@@ -53,10 +56,12 @@ def downloadLink(link, address):
 def listProfiles():
     # Needs change for GUI implementation
     for profile in profiles:
-        print(profile[0] + ":\n" + profile[1] + "\n" + profile[2] + "\nPosts: " + str(profile[3]) + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5]))
+        print(profile[0] + ":\n" + profile[1] + "\n" + profile[2] + "\nPosts: " + str(profile[3])
+              + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5]))
         print("---------------------------------")
 
 connection, dbCursor = initialize()
 
-result = dbCursor.execute("SELECT username, full_name, biography, media_count, follower_count, following_count, small_profile_pic FROM Profile")
+result = dbCursor.execute("""SELECT username, full_name, biography, media_count,
+                          follower_count, following_count, small_profile_pic FROM Profile""")
 profiles = result.fetchall()
