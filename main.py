@@ -1,5 +1,27 @@
 import sqlite3
 import os
+import requests
+import json
+
+path = os.path.dirname(os.path.abspath(__file__)) + "\\data"
+connection = None
+dbCursor = None
+
+def initialize():
+    if not os.path.exists(path):
+        os.mkdir(path)
+    
+    initializeTables = False
+    if not os.path.exists(path + "\\data.db"):
+        initializeTables = True
+
+    connection = sqlite3.connect(path + "\\data.db")
+    dbCursor = connection.cursor()
+
+    dbCursor.execute("PRAGMA foreign_keys = ON")
+
+    if initializeTables:
+        makeTables()
 
 def makeTables():
     dbCursor.execute("CREATE TABLE Media(name PRIMARY KEY, type)")
@@ -21,17 +43,7 @@ def makeTables():
     
     dbCursor.execute("CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number), FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))")
 
-initializeTables = False
-if not os.path.exists("data.db"):
-    initializeTables = True
-
-connection = sqlite3.connect("data.db")
-dbCursor = connection.cursor()
-
-dbCursor.execute("PRAGMA foreign_keys = ON")
-
-if initializeTables:
-    makeTables()
+initialize()
 
 result = dbCursor.execute("SELECT username, full_name, biography, media_count, follower_count, following_count, small_profile_pic FROM Profile")
 profiles = result.fetchall()
