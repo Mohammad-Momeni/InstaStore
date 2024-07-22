@@ -1,5 +1,8 @@
 import sqlite3
 import os
+import shutil
+import mimetypes
+mimetypes.init()
 import requests
 import json
 
@@ -19,7 +22,7 @@ def initialize():
     dbCursor.execute("PRAGMA foreign_keys = ON")
 
     if initializeTables:
-        makeTables()
+        makeTables(dbCursor)
     return connection, dbCursor
 
 def makeTables(dbCursor):
@@ -45,11 +48,26 @@ def makeTables(dbCursor):
     dbCursor.execute("""CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))""")
 
+def guessType(fileName):
+    mimestart = mimetypes.guess_type(fileName)[0]
+
+    if mimestart != None:
+        mimestart = mimestart.split('/')[0]
+
+        if mimestart == 'image':
+            return 'Photo'
+        elif mimestart == 'video':
+            return 'Video'
+        
+    return 'None'
+
 def downloadLink(link, address):
     # Needs change for GUI implementation
     try:
         media = requests.get(link, allow_redirects=True)
         open(path + address, 'wb').write(media.content)
+        dbCursor.execute(f"""INSERT INTO Media VALUES("{address}", "{guessType(path + address)}")""")
+        connection.commit()
         return True
     except:
         return False
