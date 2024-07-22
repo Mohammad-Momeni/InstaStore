@@ -30,7 +30,7 @@ def makeTables(dbCursor):
 
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name, page_name, biography,
                      is_private, public_email, media_count, follower_count, following_count, original_profile_pic,
-                     small_profile_pic, FOREIGN KEY(original_profile_pic) REFERENCES Media(name),
+                     small_profile_pic, is_profile_downloaded, FOREIGN KEY(original_profile_pic) REFERENCES Media(name),
                      FOREIGN KEY(small_profile_pic) REFERENCES Media(name))""")
     
     dbCursor.execute("""CREATE TABLE Post(pk, link, caption, timestamp, isTag,
@@ -121,6 +121,7 @@ def addProfile(username):
         format = format[format.rindex("."):]
         original_profile_pic = f"\\{username}\\Profiles\\Profile{format}"
         small_profile_pic = f"\\{username}\\Profiles\\Profile_thumbnail{format}"
+        is_profile_downloaded = 0
 
         isDownloaded = downloadLink(original_profile_pic_link, original_profile_pic)
         if not isDownloaded:
@@ -160,7 +161,7 @@ def addProfile(username):
             instruction += "NULL"
         else:
             instruction += f"""'{public_email}'"""
-        instruction += f""", {media_count}, {follower_count}, {following_count}, "{original_profile_pic}", "{small_profile_pic}")"""
+        instruction += f""", {media_count}, {follower_count}, {following_count}, "{original_profile_pic}", "{small_profile_pic}", {is_profile_downloaded})"""
         dbCursor.execute(instruction)
         connection.commit()
 
