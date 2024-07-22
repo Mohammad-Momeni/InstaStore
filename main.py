@@ -67,7 +67,6 @@ def downloadLink(link, address):
         media = requests.get(link, allow_redirects=True)
         open(path + address, 'wb').write(media.content)
         dbCursor.execute(f"""INSERT INTO Media VALUES("{address}", "{guessType(path + address)}")""")
-        connection.commit()
         return True
     except:
         return False
@@ -104,8 +103,6 @@ def addProfile(username):
         username = data["username"]
         full_name = data["full_name"]
         page_name = data["page_name"]
-        if page_name is None:
-            page_name = "NULL"
         biography = data["biography"]
         is_private = data["is_private"]
         if is_private:
@@ -115,7 +112,7 @@ def addProfile(username):
         if "public_email" in data.keys():
             public_email = data["public_email"]
         else:
-            public_email = "NULL"
+            public_email = None
         media_count = data["media_count"]
         follower_count = data["follower_count"]
         following_count = data["following_count"]
@@ -153,11 +150,25 @@ def addProfile(username):
                     print("There was an error!")
                     return
 
-        dbCursor.execute(f"""INSERT INTO Profile VALUES({pk}, "{username}", "{full_name}", "{page_name}", "{biography}", {is_private},
-                        "{public_email}", {media_count}, {follower_count}, {following_count}, "{original_profile_pic}", "{small_profile_pic}")""")
+        instruction = f"""INSERT INTO Profile VALUES({pk}, "{username}", "{full_name}","""
+        if page_name is None:
+            instruction += "NULL"
+        else:
+            instruction += f"""'{page_name}'"""
+        instruction += f""", "{biography}", {is_private},"""
+        if public_email is None:
+            instruction += "NULL"
+        else:
+            instruction += f"""'{public_email}'"""
+        instruction += f""", {media_count}, {follower_count}, {following_count}, "{original_profile_pic}", "{small_profile_pic}")"""
+        dbCursor.execute(instruction)
         connection.commit()
 
     except:
+        try:
+            shutil.rmtree(path + f"\\{username}")
+        except:
+            pass
         print("There was an error!")
 
 connection, dbCursor = initialize()
