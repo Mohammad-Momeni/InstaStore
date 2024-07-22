@@ -6,17 +6,17 @@ mimetypes.init()
 import requests
 import json
 
-path = os.path.dirname(os.path.abspath(__file__)) + "\\storage"
+path = os.path.dirname(os.path.abspath(__file__)) + "/storage"
 
 def initialize():
     if not os.path.exists(path):
         os.mkdir(path)
     
     initializeTables = False
-    if not os.path.exists(path + "\\data.db"):
+    if not os.path.exists(path + "/data.db"):
         initializeTables = True
 
-    connection = sqlite3.connect(path + "\\data.db")
+    connection = sqlite3.connect(path + "/data.db")
     dbCursor = connection.cursor()
 
     dbCursor.execute("PRAGMA foreign_keys = ON")
@@ -26,27 +26,18 @@ def initialize():
     return connection, dbCursor
 
 def makeTables(dbCursor):
-    dbCursor.execute("CREATE TABLE Media(name PRIMARY KEY, type)")
-
-    dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name, page_name, biography,
-                     is_private, public_email, media_count, follower_count, following_count, original_profile_pic,
-                     small_profile_pic, is_profile_downloaded, FOREIGN KEY(original_profile_pic) REFERENCES Media(name),
-                     FOREIGN KEY(small_profile_pic) REFERENCES Media(name))""")
+    dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
+                     page_name, biography, is_private, public_email, media_count,
+                     follower_count, following_count, past_profiles, is_profile_downloaded)""")
     
-    dbCursor.execute("""CREATE TABLE Post(pk, link, caption, timestamp, isTag,
+    dbCursor.execute("""CREATE TABLE Post(pk, link, number_of_items, caption, timestamp, isTag,
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
-    dbCursor.execute("""CREATE TABLE Highlight(pk, id, title, cover_image, PRIMARY KEY(pk, id),
-                     FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(cover_image) REFERENCES Media(name))""")
+    dbCursor.execute("""CREATE TABLE Highlight(pk, id, title, PRIMARY KEY(pk, id),
+                     FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(id))""")
-    
-    dbCursor.execute("""CREATE TABLE Content(id, number, media, thumbnail, PRIMARY KEY(id, number),
-                     FOREIGN KEY(media) REFERENCES Media(name), FOREIGN KEY(thumbnail) REFERENCES Media(name))""")
-    
-    dbCursor.execute("""CREATE TABLE ProfileHistory(pk, number, media, PRIMARY KEY(pk, number),
-                     FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(media) REFERENCES Media(name))""")
 
 def guessType(fileName):
     mimestart = mimetypes.guess_type(fileName)[0]
@@ -66,7 +57,6 @@ def downloadLink(link, address):
     try:
         media = requests.get(link, allow_redirects=True)
         open(path + address, 'wb').write(media.content)
-        dbCursor.execute(f"""INSERT INTO Media VALUES("{address}", "{guessType(path + address)}")""")
         return True
     except:
         return False
@@ -93,11 +83,11 @@ def addProfile(username):
         data = json.loads(response.text)
         data = data['result']['user']
         
-        if not os.path.exists(path + f"\\{username}"):
-            os.mkdir(path + f"\\{username}")
+        if not os.path.exists(path + f"/{username}"):
+            os.mkdir(path + f"/{username}")
         
-        if not os.path.exists(path + f"\\{username}\\Profiles"):
-            os.mkdir(path + f"\\{username}\\Profiles")
+        if not os.path.exists(path + f"/{username}/Profiles"):
+            os.mkdir(path + f"/{username}/Profiles")
         
         pk = int(data["pk"])
         username = data["username"]
@@ -119,8 +109,9 @@ def addProfile(username):
         original_profile_pic_link = data["hd_profile_pic_url_info"]["url"]
         format = original_profile_pic_link[:original_profile_pic_link.index("?")]
         format = format[format.rindex("."):]
-        original_profile_pic = f"\\{username}\\Profiles\\Profile{format}"
-        small_profile_pic = f"\\{username}\\Profiles\\Profile_thumbnail{format}"
+        original_profile_pic = f"/{username}/Profiles/Profile{format}"
+        small_profile_pic = f"/{username}/Profiles/Profile_thumbnail{format}"
+        past_profiles = 0
         is_profile_downloaded = 0
 
         isDownloaded = downloadLink(original_profile_pic_link, original_profile_pic)
@@ -139,7 +130,7 @@ def addProfile(username):
             small_profile_pic_link = data["hd_profile_pic_versions"][0]["url"]
             format = original_profile_pic_link[:original_profile_pic_link.index("?")]
             format = format[format.rindex("."):]
-            small_profile_pic = f"\\{username}\\Profiles\\Profile_thumbnail{format}"
+            small_profile_pic = f"/{username}/Profiles/Profile_thumbnail{format}"
             isDownloaded = downloadLink(small_profile_pic_link, small_profile_pic)
             if not isDownloaded:
                 for i in range(5):
@@ -160,15 +151,11 @@ def addProfile(username):
             instruction += "NULL"
         else:
             instruction += f"""'{public_email}'"""
-        instruction += f""", {media_count}, {follower_count}, {following_count}, "{original_profile_pic}", "{small_profile_pic}", {is_profile_downloaded})"""
+        instruction += f""", {media_count}, {follower_count}, {following_count}, {past_profiles}, {is_profile_downloaded})"""
         dbCursor.execute(instruction)
         connection.commit()
 
     except:
-        try:
-            shutil.rmtree(path + f"\\{username}")
-        except:
-            pass
         print("There was an error!")
 
 connection, dbCursor = initialize()
