@@ -39,7 +39,7 @@ def makeTables(dbCursor):
     dbCursor.execute("""CREATE TABLE Highlight(pk, id, title, cover_image, PRIMARY KEY(pk, id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(cover_image) REFERENCES Media(name))""")
     
-    dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk),
+    dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(id))""")
     
     dbCursor.execute("""CREATE TABLE Content(id, number, media, thumbnail, PRIMARY KEY(id, number),
@@ -74,19 +74,19 @@ def downloadLink(link, address):
 def listProfiles():
     # Needs change for GUI implementation
     for profile in profiles:
-        print(profile[0] + ":\n" + profile[1] + "\n" + profile[2] + "\nPosts: " + str(profile[3])
-              + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5]))
+        print(profile[1] + ":\n" + profile[2] + "\n" + profile[3] + "\nPosts: " + str(profile[4])
+              + "\nFollowers: " + str(profile[5]) + "\nFollowings: " + str(profile[6]))
         print("---------------------------------")
 
 def addProfile(username):
     try:
         for profile in profiles:
-            if profile[0] == username:
+            if profile[1] == username:
                 print("This account is already added!")
                 return
         
         response = requests.get(f'https://anonyig.com/api/ig/userInfoByUsername/{username}')
-        if (response.status_code != 200):
+        if response.status_code != 200:
             print("There was an error!")
             return
         
@@ -127,7 +127,6 @@ def addProfile(username):
         if not isDownloaded:
             for i in range(5):
                 isDownloaded = downloadLink(original_profile_pic_link, original_profile_pic)
-                print(f"this was the {i}'th time {isDownloaded}")
                 if isDownloaded:
                     break
             if not isDownloaded:
@@ -174,6 +173,6 @@ def addProfile(username):
 
 connection, dbCursor = initialize()
 
-result = dbCursor.execute("""SELECT username, full_name, biography, media_count,
+result = dbCursor.execute("""SELECT pk, username, full_name, biography, media_count,
                           follower_count, following_count, small_profile_pic FROM Profile""")
 profiles = result.fetchall()
