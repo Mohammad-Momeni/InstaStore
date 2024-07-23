@@ -33,11 +33,11 @@ def makeTables(dbCursor):
     dbCursor.execute("""CREATE TABLE Post(pk, link, number_of_items, caption, timestamp, isTag,
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
-    dbCursor.execute("""CREATE TABLE Highlight(pk, id, title, PRIMARY KEY(pk, id),
+    dbCursor.execute("""CREATE TABLE Highlight(highlight_id, pk, title, PRIMARY KEY(highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
-                     FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(id))""")
+                     FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
 
 def guessType(fileName):
     mimestart = mimetypes.guess_type(fileName)[0]
@@ -63,9 +63,13 @@ def downloadLink(link, address):
 
 def listProfiles():
     # Needs change for GUI implementation
+    if os.name == 'nt':
+        os.system('cls')
+    else:
+        os.system('clear')
     for profile in profiles:
-        print(profile[1] + ":\n" + profile[2] + "\n" + profile[3] + "\nPosts: " + str(profile[4])
-              + "\nFollowers: " + str(profile[5]) + "\nFollowings: " + str(profile[6]))
+        print(profile[1] + ":\n" + profile[2] + "\n" + profile[3] + "\nPosts: " + str(profile[5])
+              + "\nFollowers: " + str(profile[6]) + "\nFollowings: " + str(profile[7]))
         print("---------------------------------")
 
 def addProfile(username):
@@ -120,6 +124,7 @@ def addProfile(username):
                 isDownloaded = downloadLink(original_profile_pic_link, original_profile_pic)
                 if isDownloaded:
                     break
+
             if not isDownloaded:
                 print("There was an error!")
                 return
@@ -137,6 +142,7 @@ def addProfile(username):
                     isDownloaded = downloadLink(small_profile_pic_link, small_profile_pic)
                     if isDownloaded:
                         break
+
                 if not isDownloaded:
                     print("There was an error!")
                     return
@@ -152,8 +158,14 @@ def addProfile(username):
         else:
             instruction += f"""'{public_email}'"""
         instruction += f""", {media_count}, {follower_count}, {following_count}, {past_profiles}, {is_profile_downloaded})"""
+
         dbCursor.execute(instruction)
+        dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories")""")
         connection.commit()
+
+        profiles.append((pk, username, full_name, biography, is_private, media_count,
+                         follower_count, following_count, past_profiles, is_profile_downloaded))
+        listProfiles()
 
     except:
         print("There was an error!")
