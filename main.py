@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import shutil
+import glob
 import mimetypes
 mimetypes.init()
 import requests
@@ -170,8 +171,153 @@ def addProfile(username):
     except:
         print("There was an error!")
 
+def downloadStories(username, highlight_id, highlight_title = "Stories"):
+    try:
+        for profile in profiles:
+            if profile[1] == username:
+                pk = profile[0]
+        
+        if not os.path.exists(path + f"/{username}/Stories"):
+            os.mkdir(path + f"/{username}/Stories")
+        
+        isHighlight = True
+        if highlight_id == pk:
+            isHighlight = False
+
+        if isHighlight:
+            link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
+        else:
+            link = f"https://anonyig.com/api/ig/story?url=https://www.instagram.com/stories/{username}/"
+        response = requests.get(link)
+        if response.status_code != 200:
+            print("There was an error!")
+            return
+        
+        data = json.loads(response.text)
+        data = data['result']
+        if len(data) == 0:
+            print("There was no story!")
+            return
+        
+        result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
+        stories = result.fetchall()
+
+        for newStory in data:
+            story_pk = int(newStory['pk'])
+            downloaded = False
+
+            for i in range(len(stories)):
+                if stories[i][1] == story_pk:
+
+                    if stories[i][2] == pk:
+                        if isHighlight:
+                            files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
+                            if len(files) == 2:
+                                for file in files:
+                                    if '/' in file:
+                                        index = file.rindex("/")
+                                    else:
+                                        index = file.rindex("\\")
+                                    shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+
+                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]}, {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
+                                stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
+                                connection.commit()
+                                downloaded = True
+
+                        else:
+                            downloaded = True
+
+                    elif stories[i][2] != highlight_id:
+                        folders = glob.glob(path + f"/{username}/Highlights/{highlight_title}_{highlight_id}")
+                        if len(folders) == 1:
+                            files = glob.glob(folders[0] + f"/{story_pk}*")
+                            if len(files) == 2:
+                                for file in files:
+                                    if '/' in file:
+                                            index = file.rindex("/")
+                                    else:
+                                        index = file.rindex("\\")
+                                    
+                                    if isHighlight:
+                                        shutil.copy(file, path + f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                                    else:
+                                        shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
+                                
+                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                    {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
+                                stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
+                                connection.commit()
+                                downloaded = True
+
+                    else:
+                        downloaded = True
+
+                    break
+
+            if downloaded:
+                continue
+
+            timestamp = newStory['taken_at']
+
+            media_link = None
+            if 'video_versions' in newStory.keys():
+                media_link = newStory['video_versions'][0]['url']
+
+            if media_link is None:
+                media_link = newStory['image_versions2']['candidates'][0]['url']
+
+            thumbnail_link = newStory['image_versions2']['candidates'][-3]['url']
+
+            if isHighlight:
+                format = media_link[:media_link.index("?")]
+                format = format[format.rindex("."):]
+                media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}{format}"
+
+                format = thumbnail_link[:thumbnail_link.index("?")]
+                format = format[format.rindex("."):]
+                thumbnail_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}_thumbnail{format}"
+
+            else:
+                format = media_link[:media_link.index("?")]
+                format = format[format.rindex("."):]
+                media_address = f"/{username}/Stories/{story_pk}{format}"
+
+                format = thumbnail_link[:thumbnail_link.index("?")]
+                format = format[format.rindex("."):]
+                thumbnail_address = f"/{username}/Stories/{story_pk}_thumbnail{format}"
+
+            isDownloaded = downloadLink(media_link, media_address)
+            if not isDownloaded:
+                for i in range(5):
+                    isDownloaded = downloadLink(media_link, media_address)
+                    if isDownloaded:
+                        break
+
+                if not isDownloaded:
+                    print("There was an error!")
+                    return
+                    
+            isDownloaded = downloadLink(thumbnail_link, thumbnail_address)
+            if not isDownloaded:
+                for i in range(5):
+                    isDownloaded = downloadLink(thumbnail_link, thumbnail_address)
+                    if isDownloaded:
+                        break
+
+                if not isDownloaded:
+                    print("There was an error!")
+                    return
+            
+            dbCursor.execute(f"""INSERT INTO Story VALUES({pk}, {story_pk}, {highlight_id}, {timestamp})""")
+            stories.append((pk, story_pk, highlight_id, timestamp))
+            connection.commit()
+
+    except:
+        print("There was an error!")
+
 connection, dbCursor = initialize()
 
-result = dbCursor.execute("""SELECT pk, username, full_name, biography, media_count,
-                          follower_count, following_count, small_profile_pic FROM Profile""")
+result = dbCursor.execute("""SELECT pk, username, full_name, biography, is_private, media_count,
+                          follower_count, following_count, past_profiles, is_profile_downloaded FROM Profile""")
 profiles = result.fetchall()
