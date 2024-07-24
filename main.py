@@ -44,20 +44,19 @@ def makeTables(dbCursor):
 
 def makeThumbnail(address):
     try:
-        image = Image.open(path)
-        image.resize((128, 128))
+        image = Image.open(path + address)
+        resized_image = image.resize((128, 128))
 
         blur_radius = 2
         offset = blur_radius * 2
-        mask = Image.new("L", image.size, 0)
+        mask = Image.new("L", resized_image.size, 0)
         draw = ImageDraw.Draw(mask)
-        draw.ellipse((offset, offset, image.size[0] - offset, image.size[1] - offset), fill=255)
+        draw.ellipse((offset, offset, resized_image.size[0] - offset, resized_image.size[1] - offset), fill=255)
         mask = mask.filter(ImageFilter.GaussianBlur(blur_radius))
 
-        result = image.copy()
-        result.putalpha(mask)
+        resized_image.putalpha(mask)
 
-        result.save(address[:address.rindex('.')] + "_thumbnail.png")
+        resized_image.save(path + address[:address.rindex('.')] + "_thumbnail.png")
         
         return True
     
@@ -148,11 +147,12 @@ def addProfile(username):
         media_count = data["media_count"]
         follower_count = data["follower_count"]
         following_count = data["following_count"]
+
         original_profile_pic_link = data["hd_profile_pic_url_info"]["url"]
         format = original_profile_pic_link[:original_profile_pic_link.index("?")]
         format = format[format.rindex("."):]
         original_profile_pic = f"/{username}/Profiles/Profile{format}"
-        small_profile_pic = f"/{username}/Profiles/Profile_thumbnail{format}"
+
         past_profiles = 0
         is_profile_downloaded = 0
 
@@ -161,29 +161,29 @@ def addProfile(username):
             print("There was an error!")
             return
 
-        if data["has_anonymous_profile_picture"] == True:
-            shutil.copyfile(original_profile_pic, small_profile_pic)
-        else:
-            small_profile_pic_link = data["hd_profile_pic_versions"][0]["url"]
-            format = original_profile_pic_link[:original_profile_pic_link.index("?")]
-            format = format[format.rindex("."):]
-            small_profile_pic = f"/{username}/Profiles/Profile_thumbnail{format}"
-
-            isDownloaded = tryDownloading(small_profile_pic_link, small_profile_pic)
-            if not isDownloaded:
-                print("There was an error!")
-                return
+        if not makeThumbnail(original_profile_pic):
+            print("There was an error!")
+            return
 
         instruction = f"""INSERT INTO Profile VALUES({pk}, "{username}", "{full_name}","""
+
         if page_name is None:
             instruction += "NULL"
         else:
             instruction += f"""'{page_name}'"""
-        instruction += f""", "{biography}", {is_private},"""
-        if public_email is None:
+        
+        if biography == '':
+            instruction += f", NULL"
+        else:
+            instruction += f""", '{biography}'"""
+
+        instruction += f""", {is_private},"""
+
+        if (public_email is None) or (public_email == ''):
             instruction += "NULL"
         else:
             instruction += f"""'{public_email}'"""
+
         instruction += f""", {media_count}, {follower_count}, {following_count}, {past_profiles}, {is_profile_downloaded})"""
 
         dbCursor.execute(instruction)
