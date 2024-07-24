@@ -8,6 +8,7 @@ import requests
 import json
 
 path = os.path.dirname(os.path.abspath(__file__)) + "/storage"
+session = requests.Session()
 
 def initialize():
     if not os.path.exists(path):
@@ -54,7 +55,7 @@ def guessType(fileName):
     return 'None'
 
 def downloadLink(link, address):
-    # Needs change for GUI implementation
+    # Needs change for GUI implementation and multithreading
     try:
         media = requests.get(link, allow_redirects=True)
         open(path + address, 'wb').write(media.content)
@@ -93,7 +94,7 @@ def addProfile(username):
                 print("This account is already added!")
                 return
         
-        response = requests.get(f'https://anonyig.com/api/ig/userInfoByUsername/{username}')
+        response = session.get(f'https://anonyig.com/api/ig/userInfoByUsername/{username}')
         if response.status_code != 200:
             print("There was an error!")
             return
@@ -173,8 +174,7 @@ def addProfile(username):
     except:
         print("There was an error!")
 
-def downloadStories(username, highlight_id, highlight_title):
-    # Needs change for GUI implementation
+def getStories(username, highlight_id, highlight_title):
     try:
         for profile in profiles:
             if profile[1] == username:
@@ -191,20 +191,20 @@ def downloadStories(username, highlight_id, highlight_title):
             link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
         else:
             link = f"https://anonyig.com/api/ig/story?url=https://www.instagram.com/stories/{username}/"
-        response = requests.get(link)
+        response = session.get(link)
         if response.status_code != 200:
-            print("There was an error!")
-            return
-        
-        data = json.loads(response.text)
-        data = data['result']
-        if len(data) == 0:
-            print("There was no story!")
-            return
+            return None
         
         result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
         stories = result.fetchall()
+        
+        newStories = []
 
+        data = json.loads(response.text)
+        data = data['result']
+        if len(data) == 0:
+            return newStories
+        
         for newStory in data:
             story_pk = int(newStory['pk'])
             downloaded = False
@@ -225,7 +225,7 @@ def downloadStories(username, highlight_id, highlight_title):
 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                  {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
-                                stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
+                                # stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
                                 connection.commit()
                                 downloaded = True
 
@@ -250,7 +250,7 @@ def downloadStories(username, highlight_id, highlight_title):
                                 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                  {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
-                                stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
+                                # stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
                                 connection.commit()
                                 downloaded = True
 
@@ -291,22 +291,45 @@ def downloadStories(username, highlight_id, highlight_title):
                 format = format[format.rindex("."):]
                 thumbnail_address = f"/{username}/Stories/{story_pk}_thumbnail{format}"
 
-            isDownloaded = tryDownloading(media_link, media_address)
-            if not isDownloaded:
-                print("There was an error!")
-                return
-                    
-            isDownloaded = tryDownloading(thumbnail_link, thumbnail_address)
-            if not isDownloaded:
-                print("There was an error!")
-                return
+            newStories.append((pk, story_pk, highlight_id, timestamp, media_link,
+                               media_address, thumbnail_link, thumbnail_address))
+        
+        return newStories
             
-            dbCursor.execute(f"""INSERT INTO Story VALUES({pk}, {story_pk}, {highlight_id}, {timestamp})""")
-            stories.append((pk, story_pk, highlight_id, timestamp))
-            connection.commit()
 
     except:
+        return None
+
+def downloadStories(username, highlight_id, highlight_title):
+    # Needs change for GUI implementation and multithreading
+    newstories = getStories(username, highlight_id, highlight_title)
+    if newstories is None:
         print("There was an error!")
+        return
+    
+    elif len(newstories) == 0:
+        print("There was no story!")
+        return
+
+    for story in newstories:
+        try:
+            isDownloaded = tryDownloading(story[4], story[5])
+            if not isDownloaded:
+                print("Couldn't download story!")
+                continue
+                    
+            isDownloaded = tryDownloading(story[6], story[7])
+            if not isDownloaded:
+                print("Couldn't download story!")
+                continue
+            
+            dbCursor.execute(f"""INSERT INTO Story VALUES({story[0]}, {story[1]}, {story[2]}, {story[3]})""")
+            # stories.append((story[0], story[1], story[2], story[3]))
+            connection.commit()
+
+        except:
+            print("There was an error!")
+            continue
 
 connection, dbCursor = initialize()
 
