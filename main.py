@@ -111,7 +111,11 @@ def listProfiles(): # Lists the profiles
         os.system('clear')
     
     for profile in profiles:
-        print(profile[1] + ":\n" + profile[2] + "\n" + profile[3] + "\nPosts: " + str(profile[5])
+        biography = profile[3]
+        if biography is None:
+            biography = ''
+
+        print(profile[1] + ":\n" + profile[2] + "\n" + biography + "\nPosts: " + str(profile[5])
               + "\nFollowers: " + str(profile[6]) + "\nFollowings: " + str(profile[7])) # Show the details of each profile
         print("---------------------------------")
 
@@ -141,15 +145,22 @@ def addProfile(username): # Adds a profile
         full_name = data["full_name"]
         page_name = data["page_name"]
         biography = data["biography"]
+
         is_private = data["is_private"]
         if is_private:
             is_private = 1
         else:
             is_private = 0
+
         if "public_email" in data.keys():
             public_email = data["public_email"]
+
+            if public_email == '':
+                public_email = None
+
         else:
             public_email = None
+
         media_count = data["media_count"]
         follower_count = data["follower_count"]
         following_count = data["following_count"]
@@ -186,12 +197,13 @@ def addProfile(username): # Adds a profile
         
         if biography == '':
             instruction += f", NULL"
+            biography = None
         else:
             instruction += f""", '{biography}'"""
 
         instruction += f""", {is_private},"""
 
-        if (public_email is None) or (public_email == ''):
+        if public_email is None:
             instruction += "NULL"
         else:
             instruction += f"""'{public_email}'"""
