@@ -31,16 +31,19 @@ def initialize(): # Initializes basic stuff
 def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
                      page_name, biography, is_private, public_email, media_count,
-                     follower_count, following_count, past_profiles, is_profile_downloaded)""")
+                     follower_count, following_count, profile_id, is_profile_downloaded)""")
     
     dbCursor.execute("""CREATE TABLE Post(pk, link, number_of_items, caption, timestamp, isTag,
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
-    dbCursor.execute("""CREATE TABLE Highlight(highlight_id, pk, title, PRIMARY KEY(highlight_id),
+    dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
                      FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
+    
+    dbCursor.execute("""CREATE TABLE ProfileHistory(stroy_id PRIMARY KEY,
+                     pk, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
 def makeThumbnail(address): # Makes a thumbnail for given image and saves it
     try:
@@ -362,8 +365,8 @@ def downloadStories(username, highlight_id, highlight_title): # Downloads the st
             print("There was an error!")
             continue # Couldn't download, skip and try the next one
 
-connection, dbCursor = initialize()
+connection, dbCursor = initialize() # Initialize the program
 
 result = dbCursor.execute("""SELECT pk, username, full_name, biography, is_private, media_count,
-                          follower_count, following_count, past_profiles, is_profile_downloaded FROM Profile""")
-profiles = result.fetchall()
+                          follower_count, following_count, profile_id, is_profile_downloaded FROM Profile""")
+profiles = result.fetchall() # Get the list of profiles
