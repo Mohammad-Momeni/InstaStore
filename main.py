@@ -1,4 +1,5 @@
 import sqlite3
+from PIL import Image, ImageDraw, ImageFilter
 import os
 import shutil
 import glob
@@ -40,6 +41,28 @@ def makeTables(dbCursor):
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
+
+def makeThumbnail(address):
+    try:
+        image = Image.open(path)
+        image.resize((128, 128))
+
+        blur_radius = 2
+        offset = blur_radius * 2
+        mask = Image.new("L", image.size, 0)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse((offset, offset, image.size[0] - offset, image.size[1] - offset), fill=255)
+        mask = mask.filter(ImageFilter.GaussianBlur(blur_radius))
+
+        result = image.copy()
+        result.putalpha(mask)
+
+        result.save(address[:address.rindex('.')] + "_thumbnail.png")
+        
+        return True
+    
+    except:
+        return False
 
 def guessType(fileName):
     mimestart = mimetypes.guess_type(fileName)[0]
