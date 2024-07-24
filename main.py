@@ -42,8 +42,8 @@ def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
     
-    dbCursor.execute("""CREATE TABLE ProfileHistory(stroy_id PRIMARY KEY,
-                     pk, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+    dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
+                     PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
 def makeThumbnail(address): # Makes a thumbnail for given image and saves it
     try:
@@ -159,7 +159,13 @@ def addProfile(username): # Adds a profile
         format = format[format.rindex("."):]
         original_profile_pic = f"/{username}/Profiles/Profile{format}"
 
-        past_profiles = 0
+        if "profile_pic_id" in data.keys():
+            profile_id = data["profile_pic_id"]
+            profile_id = int(profile_id[:profile_id.index('_')])
+        
+        else:
+            profile_id = pk
+
         is_profile_downloaded = 0
 
         isDownloaded = tryDownloading(original_profile_pic_link, original_profile_pic) # Try downloading the profile picture
@@ -190,14 +196,14 @@ def addProfile(username): # Adds a profile
         else:
             instruction += f"""'{public_email}'"""
 
-        instruction += f""", {media_count}, {follower_count}, {following_count}, {past_profiles}, {is_profile_downloaded})"""
+        instruction += f""", {media_count}, {follower_count}, {following_count}, {profile_id}, {is_profile_downloaded})"""
 
         dbCursor.execute(instruction) # Add the profile to the database
         dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories")""") # Add a default highlight for the stories (highlight_id = pk)
         connection.commit()
 
         profiles.append((pk, username, full_name, biography, is_private, media_count,
-                         follower_count, following_count, past_profiles, is_profile_downloaded)) # Add the profile to the list as well
+                         follower_count, following_count, profile_id, is_profile_downloaded)) # Add the profile to the list as well
         listProfiles() # Update the screen
 
     except:
