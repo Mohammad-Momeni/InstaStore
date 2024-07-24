@@ -62,6 +62,19 @@ def downloadLink(link, address):
     except:
         return False
 
+def tryDownloading(link, address):
+    isDownloaded = downloadLink(link, address)
+    if not isDownloaded:
+        for i in range(5):
+            isDownloaded = downloadLink(link, address)
+            if isDownloaded:
+                return True
+
+        if not isDownloaded:
+            return False
+        
+    return True
+
 def listProfiles():
     # Needs change for GUI implementation
     if os.name == 'nt':
@@ -119,16 +132,10 @@ def addProfile(username):
         past_profiles = 0
         is_profile_downloaded = 0
 
-        isDownloaded = downloadLink(original_profile_pic_link, original_profile_pic)
+        isDownloaded = tryDownloading(original_profile_pic_link, original_profile_pic)
         if not isDownloaded:
-            for i in range(5):
-                isDownloaded = downloadLink(original_profile_pic_link, original_profile_pic)
-                if isDownloaded:
-                    break
-
-            if not isDownloaded:
-                print("There was an error!")
-                return
+            print("There was an error!")
+            return
 
         if data["has_anonymous_profile_picture"] == True:
             shutil.copyfile(original_profile_pic, small_profile_pic)
@@ -137,16 +144,11 @@ def addProfile(username):
             format = original_profile_pic_link[:original_profile_pic_link.index("?")]
             format = format[format.rindex("."):]
             small_profile_pic = f"/{username}/Profiles/Profile_thumbnail{format}"
-            isDownloaded = downloadLink(small_profile_pic_link, small_profile_pic)
-            if not isDownloaded:
-                for i in range(5):
-                    isDownloaded = downloadLink(small_profile_pic_link, small_profile_pic)
-                    if isDownloaded:
-                        break
 
-                if not isDownloaded:
-                    print("There was an error!")
-                    return
+            isDownloaded = tryDownloading(small_profile_pic_link, small_profile_pic)
+            if not isDownloaded:
+                print("There was an error!")
+                return
 
         instruction = f"""INSERT INTO Profile VALUES({pk}, "{username}", "{full_name}","""
         if page_name is None:
@@ -172,6 +174,7 @@ def addProfile(username):
         print("There was an error!")
 
 def downloadStories(username, highlight_id, highlight_title):
+    # Needs change for GUI implementation
     try:
         for profile in profiles:
             if profile[1] == username:
@@ -288,27 +291,15 @@ def downloadStories(username, highlight_id, highlight_title):
                 format = format[format.rindex("."):]
                 thumbnail_address = f"/{username}/Stories/{story_pk}_thumbnail{format}"
 
-            isDownloaded = downloadLink(media_link, media_address)
+            isDownloaded = tryDownloading(media_link, media_address)
             if not isDownloaded:
-                for i in range(5):
-                    isDownloaded = downloadLink(media_link, media_address)
-                    if isDownloaded:
-                        break
-
-                if not isDownloaded:
-                    print("There was an error!")
-                    return
+                print("There was an error!")
+                return
                     
-            isDownloaded = downloadLink(thumbnail_link, thumbnail_address)
+            isDownloaded = tryDownloading(thumbnail_link, thumbnail_address)
             if not isDownloaded:
-                for i in range(5):
-                    isDownloaded = downloadLink(thumbnail_link, thumbnail_address)
-                    if isDownloaded:
-                        break
-
-                if not isDownloaded:
-                    print("There was an error!")
-                    return
+                print("There was an error!")
+                return
             
             dbCursor.execute(f"""INSERT INTO Story VALUES({pk}, {story_pk}, {highlight_id}, {timestamp})""")
             stories.append((pk, story_pk, highlight_id, timestamp))
