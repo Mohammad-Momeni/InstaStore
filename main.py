@@ -171,7 +171,7 @@ def addProfile(username):
     except:
         print("There was an error!")
 
-def downloadStories(username, highlight_id, highlight_title = "Stories"):
+def downloadStories(username, highlight_id, highlight_title):
     try:
         for profile in profiles:
             if profile[1] == username:
@@ -220,7 +220,8 @@ def downloadStories(username, highlight_id, highlight_title = "Stories"):
                                         index = file.rindex("\\")
                                     shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
 
-                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]}, {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
+                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                 {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
                                 stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
                                 connection.commit()
                                 downloaded = True
@@ -229,7 +230,7 @@ def downloadStories(username, highlight_id, highlight_title = "Stories"):
                             downloaded = True
 
                     elif stories[i][2] != highlight_id:
-                        folders = glob.glob(path + f"/{username}/Highlights/{highlight_title}_{highlight_id}")
+                        folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
                         if len(folders) == 1:
                             files = glob.glob(folders[0] + f"/{story_pk}*")
                             if len(files) == 2:
@@ -245,7 +246,7 @@ def downloadStories(username, highlight_id, highlight_title = "Stories"):
                                         shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
                                 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                    {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
+                                                 {stories[i][1]}, {highlight_id}, {stories[i][3]})""")
                                 stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
                                 connection.commit()
                                 downloaded = True
