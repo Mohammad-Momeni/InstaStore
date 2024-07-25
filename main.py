@@ -36,7 +36,7 @@ def makeTables(dbCursor): # Creates tables
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
     dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
-                     FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+                     number_of_items, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
@@ -85,8 +85,13 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
     # Needs change for GUI implementation and multithreading
     try:
         media = requests.get(link, allow_redirects=True)
-        format = guess_extension(media.headers['content-type'].partition(';')[0].strip())
-        open(path + address + format, 'wb').write(media.content) # saving the file
+
+        extension = guess_extension(media.headers['content-type'].partition(';')[0].strip()) # Find the extension from the headers
+        if extension is None: # If couldn't find from headers then find from the link
+            extension = link[:link.index('?')]
+            extension = extension[extension.rindex('.'):]
+
+        open(path + address + extension, 'wb').write(media.content) # saving the file
         return True
     
     except:
@@ -212,7 +217,7 @@ def addProfile(username): # Adds a profile
         instruction += f""", {media_count}, {follower_count}, {following_count}, {profile_id}, {is_profile_downloaded})"""
 
         dbCursor.execute(instruction) # Add the profile to the database
-        dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories")""") # Add a default highlight for the stories (highlight_id = pk)
+        dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories", 0)""") # Add a default highlight for the stories (highlight_id = pk)
         connection.commit()
 
         profiles.append((pk, username, full_name, biography, is_private, media_count,
@@ -222,15 +227,10 @@ def addProfile(username): # Adds a profile
     except:
         print("There was an error!") # Couldn't add the profile
 
-def getStories(username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
+def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
     try:
-        for profile in profiles:
-            if profile[1] == username:
-                pk = profile[0] # Find the pk of the given username
-        
-        if not os.path.exists(path + f"/{username}/Stories"):
-            os.mkdir(path + f"/{username}/Stories")
-        
+        number_of_items = 0
+
         isHighlight = True
         if highlight_id == pk: # highlight_id = pk is for stories
             isHighlight = False
@@ -243,7 +243,7 @@ def getStories(username, highlight_id, highlight_title): # Gets the stories or h
 
         response = session.get(link) # Get the data
         if response.status_code != 200:
-            return None # couldn't get the data
+            return None, number_of_items # couldn't get the data
         
         result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
         stories = result.fetchall() # Get the list of already downloaded stories from database
@@ -252,9 +252,10 @@ def getStories(username, highlight_id, highlight_title): # Gets the stories or h
 
         data = json.loads(response.text)
         data = data['result']
+        number_of_items = len(data)
 
-        if len(data) == 0:
-            return newStories # Return empty list
+        if number_of_items == 0:
+            return newStories, number_of_items # Return empty list
         
         for newStory in data:
             story_pk = int(newStory['pk'])
@@ -337,15 +338,30 @@ def getStories(username, highlight_id, highlight_title): # Gets the stories or h
             newStories.append((pk, story_pk, highlight_id, timestamp, media_link,
                                media_address, thumbnail_link, thumbnail_address)) # Add the story information to the list of new stories
         
-        return newStories # Return the list of new stories
+        return newStories, number_of_items # Return the list of new stories
             
-
     except:
-        return None # Something went wrong
+        return None, number_of_items # Something went wrong
 
-def downloadStories(username, highlight_id, highlight_title): # Downloads the stories or highlights of the profile
+def downloadStories(username, highlight_id, highlight_title, prev_items): # Downloads the stories or highlights of the profile
     # Needs change for GUI implementation and multithreading
-    newstories = getStories(username, highlight_id, highlight_title) # Get the list of new stories
+    for profile in profiles:
+        if profile[1] == username:
+            pk = profile[0] # Find the pk of the given username
+    
+    if (pk == highlight_id) and (not os.path.exists(path + f"/{username}/Stories")):
+        os.mkdir(path + f"/{username}/Stories")
+
+    newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories
+
+    if number_of_items > prev_items:
+        try:
+            dbCursor.execute(f"""UPDATE Highlight SET number_of_items = {number_of_items}
+                             WHERE highlight_id = {highlight_id}""")
+            connection.commit()
+
+        except:
+            pass
 
     if newstories is None:
         print("There was an error!")
