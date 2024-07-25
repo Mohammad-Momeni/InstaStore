@@ -3,8 +3,7 @@ from PIL import Image, ImageDraw, ImageFilter
 import os
 import shutil
 import glob
-import mimetypes
-mimetypes.init()
+from mimetypes import guess_extension, guess_type
 import requests
 import json
 
@@ -47,7 +46,12 @@ def makeTables(dbCursor): # Creates tables
 
 def makeThumbnail(address): # Makes a thumbnail for given image and saves it
     try:
-        image = Image.open(path + address)
+        file = glob.glob(path + address + ".*")
+        if len(file) != 1:
+            return False # Couldn't find the image
+        file = file[0]
+        
+        image = Image.open(file)
         resized_image = image.resize((128, 128)) # Thumbnail size
 
         blur_radius = 2 # Radius of blurring the edges of the circle thumbnail
@@ -59,7 +63,7 @@ def makeThumbnail(address): # Makes a thumbnail for given image and saves it
 
         resized_image.putalpha(mask) # Making the edges transparent
 
-        resized_image.save(path + address[:address.rindex('.')] + "_thumbnail.png") # Saving thumbnail at the same path
+        resized_image.save(file[:file.rindex('.')] + "_thumbnail.png") # Saving thumbnail at the same path
         
         return True
     
@@ -67,15 +71,13 @@ def makeThumbnail(address): # Makes a thumbnail for given image and saves it
         return False # Couldn't make the thumbnail
 
 def guessType(file): # Guesses the type of the file
-    mimestart = mimetypes.guess_type(path + file)[0] # Guessing the type of the file
+    mimestart = guess_type(path + file)[0] # Guessing the type of the file
 
     if mimestart != None:
         mimestart = mimestart.split('/')[0]
 
-        if mimestart == 'image':
-            return 'Photo'
-        elif mimestart == 'video':
-            return 'Video'
+        if mimestart in ['image', 'video']:
+            return mimestart
         
     return 'None' # Couldn't guess or it wasn't image or video
 
@@ -83,7 +85,8 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
     # Needs change for GUI implementation and multithreading
     try:
         media = requests.get(link, allow_redirects=True)
-        open(path + address, 'wb').write(media.content) # saving the file
+        format = guess_extension(media.headers['content-type'].partition(';')[0].strip())
+        open(path + address + format, 'wb').write(media.content) # saving the file
         return True
     
     except:
@@ -165,11 +168,6 @@ def addProfile(username): # Adds a profile
         follower_count = data["follower_count"]
         following_count = data["following_count"]
 
-        original_profile_pic_link = data["hd_profile_pic_url_info"]["url"]
-        format = original_profile_pic_link[:original_profile_pic_link.index("?")]
-        format = format[format.rindex("."):]
-        original_profile_pic = f"/{username}/Profiles/Profile{format}"
-
         if "profile_pic_id" in data.keys():
             profile_id = data["profile_pic_id"]
             profile_id = int(profile_id[:profile_id.index('_')])
@@ -178,6 +176,9 @@ def addProfile(username): # Adds a profile
             profile_id = pk
 
         is_profile_downloaded = 0
+
+        original_profile_pic_link = data["hd_profile_pic_url_info"]["url"]
+        original_profile_pic = f"/{username}/Profiles/Profile"
 
         isDownloaded = tryDownloading(original_profile_pic_link, original_profile_pic) # Try downloading the profile picture
         if not isDownloaded:
@@ -324,22 +325,14 @@ def getStories(username, highlight_id, highlight_title): # Gets the stories or h
             thumbnail_link = newStory['image_versions2']['candidates'][-2]['url'] # 320 * 320 image for thumbnail
 
             if isHighlight: # Set the saving address according to being a story or highlight
-                format = media_link[:media_link.index("?")]
-                format = format[format.rindex("."):]
-                media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}{format}"
+                media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
 
-                format = thumbnail_link[:thumbnail_link.index("?")]
-                format = format[format.rindex("."):]
-                thumbnail_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}_thumbnail{format}"
+                thumbnail_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}_thumbnail"
 
             else:
-                format = media_link[:media_link.index("?")]
-                format = format[format.rindex("."):]
-                media_address = f"/{username}/Stories/{story_pk}{format}"
+                media_address = f"/{username}/Stories/{story_pk}"
 
-                format = thumbnail_link[:thumbnail_link.index("?")]
-                format = format[format.rindex("."):]
-                thumbnail_address = f"/{username}/Stories/{story_pk}_thumbnail{format}"
+                thumbnail_address = f"/{username}/Stories/{story_pk}_thumbnail"
 
             newStories.append((pk, story_pk, highlight_id, timestamp, media_link,
                                media_address, thumbnail_link, thumbnail_address)) # Add the story information to the list of new stories
