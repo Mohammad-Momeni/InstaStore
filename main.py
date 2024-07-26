@@ -174,7 +174,6 @@ def getProfileData(username): # Get a profile's data
             profile_id = profile['pk']
 
         profile['profile_id'] = profile_id
-        profile['is_profile_downloaded'] = 0
         profile['original_profile_pic_link'] = data["hd_profile_pic_url_info"]["url"]
         profile['original_profile_pic'] = f"/{username}/Profiles/Profile"
 
@@ -230,7 +229,8 @@ def addProfile(username): # Adds a profile
         else:
             instruction += f"""'{data['public_email']}'"""
 
-        instruction += f""", {data['media_count']}, {data['follower_count']}, {data['following_count']}, {data['profile_id']}, {data['is_profile_downloaded']})"""
+        instruction += f""", {data['media_count']}, {data['follower_count']}, {data['following_count']},
+                        {data['profile_id']}, 0)"""
 
         dbCursor.execute(instruction) # Add the profile to the database
         dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']}, "Stories",
@@ -238,7 +238,7 @@ def addProfile(username): # Adds a profile
         connection.commit()
 
         profiles.append((data['pk'], data['username'], data['full_name'], data['biography'], data['is_private'], data['media_count'],
-                         data['follower_count'], data['following_count'], data['profile_id'], data['is_profile_downloaded'])) # Add the profile to the list as well
+                         data['follower_count'], data['following_count'], data['profile_id'], 0)) # Add the profile to the list as well
         
         if not data['is_private']:
             getHighlights(data['pk'], data['username']) # If the account isn't private then get it's highlights
@@ -247,6 +247,93 @@ def addProfile(username): # Adds a profile
 
     except:
         print("There was an error!") # Couldn't add the profile
+
+def addProfileHistory(pk, username, profile_id): # Add a profile pic to history
+    try:
+        if not os.path.exists(path + f"/{username}/Profiles"):
+            os.mkdir(path + f"/{username}/Profiles")
+        
+        else: # If Profiles folder exist then move the past profile files (if any) to History folder
+            if not os.path.exists(path + f"/{username}/Profiles/History"):
+                os.mkdir(path + f"/{username}/Profiles/History")
+            
+            files = glob.glob(path + f"/{username}/Profiles/Profile*.*")
+
+            for file in files:
+                newName = file.rsplit("Profile", 1)
+                newName = newName[0] + f"/History/{profile_id}/" + newName[1] # Change the name from Profile(_thumbnail) to {profile_id}
+
+                shutil.move(file, newName)
+        
+        dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({pk}, {profile_id})""") # Add the past profile to history
+        connection.commit()
+
+        return True
+    
+    except:
+        return False # Couldn't add profile to history
+
+def updateProfile(username):
+    try:
+        result = dbCursor.execute(f"""SELECT is_private, profile_id FROM Profile WHERE username = '{username}'""")
+        user_data = result.fetchone() # Get current information of user
+
+        new_data = getProfileData(username) # Get new information of user
+        if new_data is None:
+            print("Couldn't update profile")
+            return
+        
+        if user_data[1] != new_data['profile_id']: # Profile picture has changed
+            if not addProfileHistory(new_data['pk'], username, user_data[1]):
+                print("Couldn't update profile")
+                return
+            
+        isDownloaded = tryDownloading(new_data['original_profile_pic_link'], new_data['original_profile_pic']) # Try downloading the profile picture
+        if not isDownloaded:
+            print("Couldn't update profile")
+            return
+
+        if not makeThumbnail(new_data['original_profile_pic'], 128): # Try Making a thumbnail for the profile picture
+            print("Couldn't update profile")
+            return
+        
+        instruction = f"""UPDATE Profile SET full_name = "{new_data['full_name']}", page_name = """
+
+        if new_data['page_name'] is None:
+            instruction += "NULL"
+        else:
+            instruction += f"""'{new_data['page_name']}'"""
+        
+        instruction += ", biography = "
+        
+        if new_data['biography'] == '':
+            instruction += f"NULL"
+            new_data['biography'] = None
+        else:
+            instruction += f"""'{new_data['biography']}'"""
+
+        instruction += f""", is_private = {new_data['is_private']}, public_email = """
+
+        if new_data['public_email'] is None:
+            instruction += "NULL"
+        else:
+            instruction += f"""'{new_data['public_email']}'"""
+
+        instruction += f""", media_count = {new_data['media_count']}, follower_count = {new_data['follower_count']},
+                        following_count = {new_data['following_count']}, profile_id = {new_data['profile_id']}
+                        WHERE pk = {new_data['pk']}"""
+        
+        dbCursor.execute(instruction) # Update profile's information in database
+        
+        if user_data[0] != new_data['is_private']:
+            dbCursor.execute(f"""UPDATE Highlight SET available = {int(not new_data['is_private'])}
+                             WHERE highlight_id = {new_data['pk']}""") # Change availability of stories
+        
+        connection.commit()
+        
+    except:
+        print("Couldn't update profile")
+        return
 
 def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
     try:
