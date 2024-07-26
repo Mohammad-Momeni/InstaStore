@@ -118,6 +118,10 @@ def listProfiles(): # Lists the profiles
     else:
         os.system('clear')
     
+    result = dbCursor.execute("""SELECT pk, username, full_name, biography, is_private, media_count,
+                          follower_count, following_count, profile_id, is_profile_downloaded FROM Profile""")
+    profiles = result.fetchall() # Get the list of profiles
+
     for profile in profiles:
         biography = profile[3]
         if biography is None:
@@ -184,10 +188,12 @@ def getProfileData(username): # Get a profile's data
 
 def addProfile(username): # Adds a profile
     try:
-        for profile in profiles:
-            if profile[1] == username:
-                print("This account is already added!")
-                return # profile already exist, don't need to continue
+        result = dbCursor.execute(f"""SELECT * FROM Profile WHERE username = '{username}'""")
+        doesExist = result.fetchall() # Get the username information
+
+        if len(doesExist) != 0:
+            print("This account is already added!")
+            return # profile already exist, don't need to continue
         
         data = getProfileData(username) # Get the profile's data
         if data is None:
@@ -236,9 +242,6 @@ def addProfile(username): # Adds a profile
         dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']}, "Stories",
                          0, {int(not data['is_private'])})""") # Add a default highlight for the stories (highlight_id = pk)
         connection.commit()
-
-        profiles.append((data['pk'], data['username'], data['full_name'], data['biography'], data['is_private'], data['media_count'],
-                         data['follower_count'], data['following_count'], data['profile_id'], 0)) # Add the profile to the list as well
         
         if not data['is_private']:
             getHighlights(data['pk'], data['username']) # If the account isn't private then get it's highlights
@@ -453,9 +456,8 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
 
 def downloadStories(username, highlight_id, highlight_title, prev_items): # Downloads the stories or highlights of the profile
     # Needs change for GUI implementation and multithreading
-    for profile in profiles:
-        if profile[1] == username:
-            pk = profile[0] # Find the pk of the given username
+    result = dbCursor.execute(f"""SELECT pk FROM Profile WHERE username = '{username}'""")
+    pk = result.fetchone()[0] # Get the pk of the given username
     
     if (pk == highlight_id) and (not os.path.exists(path + f"/{username}/Stories")):
         os.mkdir(path + f"/{username}/Stories")
@@ -500,12 +502,8 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
             print("There was an error!")
             continue # Couldn't download, skip and try the next one
 
-def getHighlights(username):
+def getHighlights(pk, username):
     try:
-        for profile in profiles:
-            if profile[1] == username:
-                pk = profile[0] # Find the pk of the given username
-        
         if not os.path.exists(path + f"/{username}/Highlights"):
             os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
         
