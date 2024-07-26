@@ -127,38 +127,30 @@ def listProfiles(): # Lists the profiles
               + "\nFollowers: " + str(profile[6]) + "\nFollowings: " + str(profile[7])) # Show the details of each profile
         print("---------------------------------")
 
-def addProfile(username): # Adds a profile
+def getProfileData(username): # Get a profile's data
     try:
-        for profile in profiles:
-            if profile[1] == username:
-                print("This account is already added!")
-                return # profile already exist, don't need to continue
-        
         response = session.get(f'https://anonyig.com/api/ig/userInfoByUsername/{username}')
         if response.status_code != 200:
-            print("There was an error!")
-            return # couldn't get the data
+            return None # couldn't get the data
         
         data = json.loads(response.text)
         data = data['result']['user']
-        
-        if not os.path.exists(path + f"/{username}"): # Make the folders for the profile
-            os.mkdir(path + f"/{username}")
-        
-        if not os.path.exists(path + f"/{username}/Profiles"):
-            os.mkdir(path + f"/{username}/Profiles")
-        
-        pk = int(data["pk"])
-        username = data["username"]
-        full_name = data["full_name"]
-        page_name = data["page_name"]
-        biography = data["biography"]
+
+        profile = {
+            'pk': int(data["pk"]),
+            'username': data["username"],
+            'full_name': data["full_name"],
+            'page_name': data["page_name"],
+            'biography': data["biography"],
+        }
 
         is_private = data["is_private"]
         if is_private:
             is_private = 1
         else:
             is_private = 0
+        
+        profile['is_private'] = is_private
 
         if "public_email" in data.keys():
             public_email = data["public_email"]
@@ -169,63 +161,87 @@ def addProfile(username): # Adds a profile
         else:
             public_email = None
 
-        media_count = data["media_count"]
-        follower_count = data["follower_count"]
-        following_count = data["following_count"]
+        profile['public_email'] = public_email
+        profile['media_count'] = data["media_count"]
+        profile['follower_count'] = data["follower_count"]
+        profile['following_count'] = data["following_count"]
 
         if "profile_pic_id" in data.keys():
             profile_id = data["profile_pic_id"]
             profile_id = int(profile_id[:profile_id.index('_')])
         
         else:
-            profile_id = pk
+            profile_id = profile['pk']
 
-        is_profile_downloaded = 0
+        profile['profile_id'] = profile_id
+        profile['is_profile_downloaded'] = 0
+        profile['original_profile_pic_link'] = data["hd_profile_pic_url_info"]["url"]
+        profile['original_profile_pic'] = f"/{username}/Profiles/Profile"
 
-        original_profile_pic_link = data["hd_profile_pic_url_info"]["url"]
-        original_profile_pic = f"/{username}/Profiles/Profile"
+        return profile # return profile's data
 
-        isDownloaded = tryDownloading(original_profile_pic_link, original_profile_pic) # Try downloading the profile picture
+    except:
+        return None # couldn't get the data
+
+def addProfile(username): # Adds a profile
+    try:
+        for profile in profiles:
+            if profile[1] == username:
+                print("This account is already added!")
+                return # profile already exist, don't need to continue
+        
+        data = getProfileData(username) # Get the profile's data
+        if data is None:
+            print("There was an error!")
+            return # couldn't get the data
+        
+        if not os.path.exists(path + f"/{data['username']}"): # Make the folders for the profile
+            os.mkdir(path + f"/{data['username']}")
+        
+        if not os.path.exists(path + f"/{data['username']}/Profiles"):
+            os.mkdir(path + f"/{data['username']}/Profiles")
+
+        isDownloaded = tryDownloading(data['original_profile_pic_link'], data['original_profile_pic']) # Try downloading the profile picture
         if not isDownloaded:
             print("There was an error!")
             return
 
-        if not makeThumbnail(original_profile_pic, 128): # Try Making a thumbnail for the profile picture
+        if not makeThumbnail(data['original_profile_pic'], 128): # Try Making a thumbnail for the profile picture
             print("There was an error!")
             return
 
-        instruction = f"""INSERT INTO Profile VALUES({pk}, "{username}", "{full_name}","""
+        instruction = f"""INSERT INTO Profile VALUES({data['pk']}, "{data['username']}", "{data['full_name']}","""
 
-        if page_name is None:
+        if data['page_name'] is None:
             instruction += "NULL"
         else:
-            instruction += f"""'{page_name}'"""
+            instruction += f"""'{data['page_name']}'"""
         
-        if biography == '':
+        if data['biography'] == '':
             instruction += f", NULL"
-            biography = None
+            data['biography'] = None
         else:
-            instruction += f""", '{biography}'"""
+            instruction += f""", '{data['biography']}'"""
 
-        instruction += f""", {is_private},"""
+        instruction += f""", {data['is_private']},"""
 
-        if public_email is None:
+        if data['public_email'] is None:
             instruction += "NULL"
         else:
-            instruction += f"""'{public_email}'"""
+            instruction += f"""'{data['public_email']}'"""
 
-        instruction += f""", {media_count}, {follower_count}, {following_count}, {profile_id}, {is_profile_downloaded})"""
+        instruction += f""", {data['media_count']}, {data['follower_count']}, {data['following_count']}, {data['profile_id']}, {data['is_profile_downloaded']})"""
 
         dbCursor.execute(instruction) # Add the profile to the database
-        dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories",
-                         0, {int(not is_private)})""") # Add a default highlight for the stories (highlight_id = pk)
+        dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']}, "Stories",
+                         0, {int(not data['is_private'])})""") # Add a default highlight for the stories (highlight_id = pk)
         connection.commit()
 
-        profiles.append((pk, username, full_name, biography, is_private, media_count,
-                         follower_count, following_count, profile_id, is_profile_downloaded)) # Add the profile to the list as well
+        profiles.append((data['pk'], data['username'], data['full_name'], data['biography'], data['is_private'], data['media_count'],
+                         data['follower_count'], data['following_count'], data['profile_id'], data['is_profile_downloaded'])) # Add the profile to the list as well
         
-        if not is_private:
-            getHighlights(username) # If the account isn't private then get it's highlights
+        if not data['is_private']:
+            getHighlights(data['pk'], data['username']) # If the account isn't private then get it's highlights
 
         listProfiles() # Update the screen
 
