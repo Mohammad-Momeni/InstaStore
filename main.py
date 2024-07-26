@@ -36,7 +36,7 @@ def makeTables(dbCursor): # Creates tables
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
     dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
-                     number_of_items, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+                     number_of_items, available, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
@@ -44,7 +44,7 @@ def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
                      PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
-def makeThumbnail(address): # Makes a thumbnail for given image and saves it
+def makeThumbnail(address, size): # Makes a thumbnail for given image and saves it
     try:
         file = glob.glob(path + address + ".*")
         if len(file) != 1:
@@ -52,7 +52,7 @@ def makeThumbnail(address): # Makes a thumbnail for given image and saves it
         file = file[0]
         
         image = Image.open(file)
-        resized_image = image.resize((128, 128)) # Thumbnail size
+        resized_image = image.resize((size, size)) # Thumbnail size
 
         blur_radius = 2 # Radius of blurring the edges of the circle thumbnail
         offset = blur_radius * 2
@@ -190,7 +190,7 @@ def addProfile(username): # Adds a profile
             print("There was an error!")
             return
 
-        if not makeThumbnail(original_profile_pic): # Try Making a thumbnail for the profile picture
+        if not makeThumbnail(original_profile_pic, 128): # Try Making a thumbnail for the profile picture
             print("There was an error!")
             return
 
@@ -217,11 +217,16 @@ def addProfile(username): # Adds a profile
         instruction += f""", {media_count}, {follower_count}, {following_count}, {profile_id}, {is_profile_downloaded})"""
 
         dbCursor.execute(instruction) # Add the profile to the database
-        dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories", 0)""") # Add a default highlight for the stories (highlight_id = pk)
+        dbCursor.execute(f"""INSERT INTO Highlight VALUES({pk}, {pk}, "Stories",
+                         0, {int(not is_private)})""") # Add a default highlight for the stories (highlight_id = pk)
         connection.commit()
 
         profiles.append((pk, username, full_name, biography, is_private, media_count,
                          follower_count, following_count, profile_id, is_profile_downloaded)) # Add the profile to the list as well
+        
+        if not is_private:
+            getHighlights(username) # If the account isn't private then get it's highlights
+
         listProfiles() # Update the screen
 
     except:
@@ -229,7 +234,7 @@ def addProfile(username): # Adds a profile
 
 def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
     try:
-        number_of_items = 0
+        number_of_items = 0 # Number of items in the stories or highlights
 
         isHighlight = True
         if highlight_id == pk: # highlight_id = pk is for stories
@@ -255,7 +260,7 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         number_of_items = len(data)
 
         if number_of_items == 0:
-            return newStories, number_of_items # Return empty list
+            return newStories, number_of_items # Return empty list if there is no story
         
         for newStory in data:
             story_pk = int(newStory['pk'])
@@ -338,7 +343,7 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
             newStories.append((pk, story_pk, highlight_id, timestamp, media_link,
                                media_address, thumbnail_link, thumbnail_address)) # Add the story information to the list of new stories
         
-        return newStories, number_of_items # Return the list of new stories
+        return newStories, number_of_items # Return the list of new stories and the number of items
             
     except:
         return None, number_of_items # Something went wrong
@@ -352,9 +357,9 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
     if (pk == highlight_id) and (not os.path.exists(path + f"/{username}/Stories")):
         os.mkdir(path + f"/{username}/Stories")
 
-    newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories
+    newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories and the number of items
 
-    if number_of_items > prev_items:
+    if number_of_items > prev_items: # If number of items increased then update the number of items in the database
         try:
             dbCursor.execute(f"""UPDATE Highlight SET number_of_items = {number_of_items}
                              WHERE highlight_id = {highlight_id}""")
@@ -391,6 +396,95 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
         except:
             print("There was an error!")
             continue # Couldn't download, skip and try the next one
+
+def getHighlights(username):
+    try:
+        for profile in profiles:
+            if profile[1] == username:
+                pk = profile[0] # Find the pk of the given username
+        
+        if not os.path.exists(path + f"/{username}/Highlights"):
+            os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
+        
+        result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
+        highlights = result.fetchall() # Get the list of highlights from database
+        
+        response = session.get(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
+        if response.status_code != 200:
+            print("Couldn't get the highlights!")
+            return False
+        
+        data = json.loads(response.text)
+        data = data['result']
+
+        for newHighlight in data:
+            try:
+                highlight_id = newHighlight['id']
+                highlight_id = int(highlight_id[highlight_id.index(":") + 1:])
+
+                title = newHighlight['title']
+                cover_link = newHighlight['cover_media']['cropped_image_version']['url']
+
+                alreadyExist = False
+                for i in range(len(highlights)):
+                    if highlights[i][0] == highlight_id:
+                        if highlights[i][2] == title: # If title hasn't changed
+                            if not os.path.exists(path + f"/{username}/Highlights/{title}_{highlight_id}"):
+                                os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+
+                        else:
+                            if os.path.exists(path + f"/{username}/Highlights/{highlights[i][2]}_{highlight_id}"):
+                                os.rename(path + f"/{username}/Highlights/{highlights[i][2]}_{highlight_id}",
+                                        path + f"/{username}/Highlights/{title}_{highlight_id}")
+                                
+                            else:
+                                os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+                            
+                            dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
+                                            WHERE highlight_id = {highlight_id}""") # Update the title
+                            connection.commit()
+                        
+                        isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight cover
+                        if isDownloaded:
+                            makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for cover
+                        
+
+                        if highlights[i][4] == 0: # If highlight wasn't avaiable before make it available
+                            dbCursor.execute(f"""UPDATE Highlight SET available = 1
+                                            WHERE highlight_id = {highlight_id}""")
+                            connection.commit()
+
+                        del(highlights[i])
+                        alreadyExist = True
+                        break
+                
+                if not alreadyExist: # If this highlight is new
+                    if not os.path.exists(path + f"/{username}/Highlights/{title}_{highlight_id}"):
+                        os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+                    
+                    dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0, 1)""") # Add it to database
+                    connection.commit()
+
+                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading it's cover
+                    if isDownloaded:
+                        makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for the cover
+
+            except:
+                continue
+
+        for highlight in highlights: # If a highlight isn't in the new list make it unavailable
+            try:
+                dbCursor.execute(f"""UPDATE Highlight SET available = 0 WHERE highlight_id = {highlight[0]}""")
+                connection.commit()
+            
+            except:
+                continue
+
+        return True
+
+    except:
+        print("Couldn't get the highlights!")
+        return False
 
 connection, dbCursor = initialize() # Initialize the program
 
