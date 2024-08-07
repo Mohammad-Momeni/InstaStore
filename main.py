@@ -588,7 +588,3 @@ def getHighlights(pk, username):
         return False
 
 connection, dbCursor = initialize() # Initialize the program
-
-result = dbCursor.execute("""SELECT pk, username, full_name, biography, is_private, media_count,
-                          follower_count, following_count, profile_id, is_profile_downloaded FROM Profile""")
-profiles = result.fetchall() # Get the list of profiles
