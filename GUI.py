@@ -104,12 +104,7 @@ class Profile_Item(QtWidgets.QWidget): # Profile Item Class
         self.noPosts_label.setAlignment(QtCore.Qt.AlignCenter)
         self.noPosts_label.setObjectName("noPosts_label")
         self.noPosts_label.setFixedSize(94, 28)
-
-        if self.posts < 1000:
-            self.noPosts_label.setText(f"{self.posts}")
-        else:
-            self.noPosts_label.setText(f"{round((self.posts / 1000), 2)}K")
-        
+        self.noPosts_label.setText(self.__number_converter(self.posts))
         self.posts_layout.addWidget(self.noPosts_label)
         self.down_layout.addLayout(self.posts_layout)
 
@@ -136,12 +131,7 @@ class Profile_Item(QtWidgets.QWidget): # Profile Item Class
         self.noFollowers_label.setAlignment(QtCore.Qt.AlignCenter)
         self.noFollowers_label.setObjectName("noFollowers_label")
         self.noFollowers_label.setFixedSize(93, 28)
-        
-        if self. followers < 1000:
-            self.noFollowers_label.setText(f"{self. followers}")
-        else:
-            self.noFollowers_label.setText(f"{round((self. followers / 1000), 2)}K")
-        
+        self.noFollowers_label.setText(self.__number_converter(self.followers))
         self.followers_layout.addWidget(self.noFollowers_label)
         self.down_layout.addLayout(self.followers_layout)
         self.left_layout.addLayout(self.down_layout)
@@ -232,12 +222,7 @@ class Profile_Item(QtWidgets.QWidget): # Profile Item Class
         self.noFollowing_label.setAlignment(QtCore.Qt.AlignCenter)
         self.noFollowing_label.setObjectName("noFollowing_label")
         self.noFollowing_label.setFixedSize(113, 28)
-
-        if self.followings < 1000:
-            self.noFollowing_label.setText(f"{self.followings}")
-        else:
-            self.noFollowing_label.setText(f"{round((self.followings / 1000), 2)}K")
-        
+        self.noFollowing_label.setText(self.__number_converter(self.followings))
         self.following_layout.addWidget(self.noFollowing_label)
         self.right_layout.addLayout(self.following_layout)
         self.profile_layout.addLayout(self.right_layout)
@@ -263,14 +248,24 @@ class Profile_Item(QtWidgets.QWidget): # Profile Item Class
 
         self.setLayout(self.profile_layout) # Set profile_layout as the widget's layout
     
-    def __download_profile(): # Download or update profile
+    def __download_profile(self): # Download or update profile
         #TODO: Download or update the profile
         pass
 
-    def __remove_profile(): # Remove the profile
+    def __remove_profile(self): # Remove the profile
         #TODO: Remove the profile
         pass
 
-    def __view_profile(): # View the profile
+    def __view_profile(self): # View the profile
         #TODO: View the profile
         pass
+
+    def __number_converter(self, number): # Make suitable numbers for showing
+        if number < 1000: # Less than 1K
+            return str(number)
+        
+        elif number < 1000000: # Less than 1M
+            return f"{round((number / 1000), 2)}K"
+        
+        else:
+            return f"{round((number / 1000000), 2)}M"
