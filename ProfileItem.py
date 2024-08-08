@@ -3,9 +3,9 @@ import os
 
 path = os.path.dirname(os.path.abspath(__file__)) # Base path
 
-class Profile_Item(QtWidgets.QWidget): # Profile Item Class
+class ProfileItem(QtWidgets.QWidget): # Profile Item Class
     def __init__ (self, profile_data):
-        super(Profile_Item, self).__init__() # Super Class
+        super(ProfileItem, self).__init__() # Super Class
 
         self.username = profile_data[0] # Username
         self.biography = profile_data[1] # Biography
@@ -14,9 +14,9 @@ class Profile_Item(QtWidgets.QWidget): # Profile Item Class
         self.followings = profile_data[4] # Followings
         self.is_profile_downloaded = profile_data[5] # Is downloaded or not
 
-        self.__setupUi() # UI initialization
+        self.__setup_UI() # UI initialization
 
-    def __setupUi(self): # Initialize UI
+    def __setup_UI(self): # Initializes UI
         # Set up of profile layout
         self.profile_layout_widget = QtWidgets.QWidget()
         self.profile_layout_widget.setGeometry(QtCore.QRect(0, 0, 513, 201))
@@ -248,19 +248,19 @@ class Profile_Item(QtWidgets.QWidget): # Profile Item Class
 
         self.setLayout(self.profile_layout) # Set profile_layout as the widget's layout
     
-    def __download_profile(self): # Download or update profile
+    def __download_profile(self): # Downloads or updates profile
         #TODO: Download or update the profile
         pass
 
-    def __remove_profile(self): # Remove the profile
+    def __remove_profile(self): # Removes the profile
         #TODO: Remove the profile
         pass
 
-    def __view_profile(self): # View the profile
+    def __view_profile(self): # Opens the profile
         #TODO: View the profile
         pass
 
-    def __number_converter(self, number): # Make suitable numbers for showing
+    def __number_converter(self, number): # Makes suitable numbers for showing
         if number < 1000: # Less than 1K
             return str(number)
         
