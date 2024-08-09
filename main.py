@@ -11,21 +11,29 @@ path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
 session = requests.Session() # Session for requests
 
 def initialize(): # Initializes basic stuff
-    if not os.path.exists(path):
-        os.mkdir(path)
-    
-    initializeTables = False
-    if not os.path.exists(path + "/data.db"):
-        initializeTables = True
+    try:
+        if not os.path.exists(path):
+            os.mkdir(path)
+        
+        initializeTables = False
+        if not os.path.exists(path + "/data.db"):
+            initializeTables = True
 
-    connection = sqlite3.connect(path + "/data.db")
-    dbCursor = connection.cursor()
+        connection = sqlite3.connect(path + "/data.db")
+        dbCursor = connection.cursor()
 
-    dbCursor.execute("PRAGMA foreign_keys = ON") # Enabling foreign key constraints
+        dbCursor.execute("PRAGMA foreign_keys = ON") # Enabling foreign key constraints
 
-    if initializeTables:
-        makeTables(dbCursor) # If tables are not created, create them
-    return connection, dbCursor
+        if initializeTables:
+            try:
+                makeTables(dbCursor) # If tables are not created, create them
+            except:
+                os.remove(path + "/data.db") # If there was an error then remove the database
+                return None, None
+            
+        return connection, dbCursor
+    except:
+        return None, None
 
 def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
@@ -82,7 +90,7 @@ def guessType(file): # Guesses the type of the file
     return 'None' # Couldn't guess or it wasn't image or video
 
 def downloadLink(link, address): # Downloads the link and saves it to the address
-    # Needs change for GUI implementation and multithreading
+    # TODO: Needs change for GUI implementation and multithreading
     try:
         media = requests.get(link, allow_redirects=True)
 
@@ -111,7 +119,7 @@ def tryDownloading(link, address): # Tries to download the link for 5 times
     return True
 
 def listProfiles(): # Lists the profiles
-    # Needs change for GUI implementation
+    # TODO: Needs change for GUI implementation
     if os.name == 'nt': # Clearing the screen
         os.system('cls')
 
@@ -249,6 +257,7 @@ def addProfile(username): # Adds a profile
         listProfiles() # Update the screen
 
     except:
+        connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
 def addProfileHistory(pk, username, profile_id): # Add a profile pic to history
@@ -269,11 +278,11 @@ def addProfileHistory(pk, username, profile_id): # Add a profile pic to history
                 shutil.move(file, newName)
         
         dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({pk}, {profile_id})""") # Add the past profile to history
-        connection.commit()
 
         return True
     
     except:
+        connection.rollback() # Rollback the changes
         return False # Couldn't add profile to history
 
 def updateProfile(username):
@@ -331,6 +340,7 @@ def updateProfile(username):
         connection.commit()
         
     except:
+        connection.rollback() # Rollback the changes
         print("Couldn't update profile")
         return
 
@@ -365,6 +375,7 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
             return newStories, number_of_items # Return empty list if there is no story
         
         for newStory in data:
+            # TODO: turn this to a function to make the program be able to continue
             story_pk = int(newStory['pk'])
             downloaded = False
 
@@ -384,7 +395,6 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                  {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                # stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
                                 connection.commit()
                                 downloaded = True
 
@@ -409,7 +419,6 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
                                 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                  {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                # stories.append((stories[i][0], stories[i][1], highlight_id, stories[i][3]))
                                 connection.commit()
                                 downloaded = True
 
@@ -448,10 +457,11 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         return newStories, number_of_items # Return the list of new stories and the number of items
             
     except:
+        connection.rollback() # Rollback the changes
         return None, number_of_items # Something went wrong
 
 def downloadStories(username, highlight_id, highlight_title, prev_items): # Downloads the stories or highlights of the profile
-    # Needs change for GUI implementation and multithreading
+    # TODO: Needs change for GUI implementation and multithreading
     result = dbCursor.execute(f"""SELECT pk FROM Profile WHERE username = '{username}'""")
     pk = result.fetchone()[0] # Get the pk of the given username
     
@@ -467,6 +477,7 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
             connection.commit()
 
         except:
+            connection.rollback() # Rollback the changes
             pass
 
     if newstories is None:
@@ -491,10 +502,10 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
             
             dbCursor.execute(f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
                              {story[2]}, {story[3]})""") # Add the story to the database
-            # stories.append((story[0], story[1], story[2], story[3]))
             connection.commit()
 
         except:
+            connection.rollback() # Rollback the changes
             print("There was an error!")
             continue # Couldn't download, skip and try the next one
 
@@ -523,16 +534,23 @@ def getHighlights(pk, username):
                 cover_link = newHighlight['cover_media']['cropped_image_version']['url']
 
                 alreadyExist = False
+                folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
+
                 for i in range(len(highlights)):
-                    if highlights[i][0] == highlight_id:
-                        if highlights[i][2] == title: # If title hasn't changed
-                            if not os.path.exists(path + f"/{username}/Highlights/{title}_{highlight_id}"):
+                    if highlights[i][0] == highlight_id: # If highlight already exists
+
+                        if (highlights[i][2] == title): # If title hasn't changed
+                            if (len(folder) == 0): # And folder doesn't exist
                                 os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
 
                         else:
-                            if os.path.exists(path + f"/{username}/Highlights/{highlights[i][2]}_{highlight_id}"):
-                                os.rename(path + f"/{username}/Highlights/{highlights[i][2]}_{highlight_id}",
-                                        path + f"/{username}/Highlights/{title}_{highlight_id}")
+                            
+                            if len(folder) > 0: # If folder exists then rename it
+                                for i in folder[1:]:
+                                    shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
+                                    shutil.rmtree(i) # Remove the other folders
+                                
+                                os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}") # Rename the folder
                                 
                             else:
                                 os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
@@ -541,7 +559,8 @@ def getHighlights(pk, username):
                                             WHERE highlight_id = {highlight_id}""") # Update the title
                             connection.commit()
                         
-                        isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight cover
+                        isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+                        # TODO: The cover may be missing (should use the first highlight instead)
                         if isDownloaded:
                             makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for cover
 
@@ -550,17 +569,26 @@ def getHighlights(pk, username):
                         break
                 
                 if not alreadyExist: # If this highlight is new
-                    if not os.path.exists(path + f"/{username}/Highlights/{title}_{highlight_id}"):
+                    if len(folder) == 0:
                         os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+
+                    else:
+                        for i in folder[1:]:
+                            shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
+                            shutil.rmtree(i) # Remove the other folders
+                        
+                        os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
                     
                     dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
                     connection.commit()
 
-                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading it's cover
+                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+                    # TODO: The cover may be missing (should use the first highlight instead)
                     if isDownloaded:
                         makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for the cover
 
             except:
+                connection.rollback() # Rollback the changes
                 continue # Skip and try the next one
 
         return True
@@ -570,3 +598,7 @@ def getHighlights(pk, username):
         return False
 
 connection, dbCursor = initialize() # Initialize the program
+
+if connection is None: # If there was an error in initializing
+    print("Couldn't initialize the program!")
+    exit() # Exit the program
