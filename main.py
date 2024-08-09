@@ -344,13 +344,69 @@ def updateProfile(username):
         print("Couldn't update profile")
         return
 
+def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories): # Check if the story is already downloaded
+    try:
+        isHighlight = pk != highlight_id # highlight_id = pk is for stories
+
+        for i in range(len(stories)):
+            if stories[i][1] == story_pk: # Story already downloaded
+
+                if stories[i][2] == pk: # It was a story before
+                    if isHighlight: # If now it's a highlight
+                        files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
+                        if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
+                            for file in files:
+                                if '/' in file:
+                                    index = file.rindex("/")
+                                else:
+                                    index = file.rindex("\\")
+                                shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+
+                            dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
+                            connection.commit()
+                            return True
+
+                    else: # If it hasn't changed then skip this
+                        return True
+
+                elif stories[i][2] != highlight_id: # It's from another highlight
+                    folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
+                    if len(folders) == 1:
+                        files = glob.glob(folders[0] + f"/{story_pk}*")
+                        if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
+                            for file in files:
+                                if '/' in file:
+                                        index = file.rindex("/")
+                                else:
+                                    index = file.rindex("\\")
+                                
+                                if isHighlight:
+                                    shutil.copy(file, path + f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                                else:
+                                    shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
+                            
+                            dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
+                            connection.commit()
+                            return True
+
+                else: # stories[i][2] == highlight.id (it's from the same highlight)
+                    return True # Skip
+
+                break # One story with same story_pk is enough
+        
+        return False # Couldn't find the story
+    
+    except:
+        connection.rollback() # Rollback the changes
+        return None # Something went wrong
+
 def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
     try:
         number_of_items = 0 # Number of items in the stories or highlights
 
-        isHighlight = True
-        if highlight_id == pk: # highlight_id = pk is for stories
-            isHighlight = False
+        isHighlight = pk != highlight_id # highlight_id = pk is for stories
 
         if isHighlight: # Get the proper link according to being a story or highlight
             link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
@@ -360,10 +416,7 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
 
         response = session.get(link) # Get the data
         if response.status_code != 200:
-            return None, number_of_items # couldn't get the data
-        
-        result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
-        stories = result.fetchall() # Get the list of already downloaded stories from database
+            return None, number_of_items # Couldn't get the data
         
         newStories = [] # List of new stories that need to be downloaded
 
@@ -374,58 +427,12 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         if number_of_items == 0:
             return newStories, number_of_items # Return empty list if there is no story
         
+        result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
+        stories = result.fetchall() # Get the list of already downloaded stories from database
+        
         for newStory in data:
-            # TODO: turn this to a function to make the program be able to continue
             story_pk = int(newStory['pk'])
-            downloaded = False
-
-            for i in range(len(stories)):
-                if stories[i][1] == story_pk: # Story already downloaded
-
-                    if stories[i][2] == pk: # It was a story before
-                        if isHighlight: # If now it's a highlight
-                            files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
-                            if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
-                                for file in files:
-                                    if '/' in file:
-                                        index = file.rindex("/")
-                                    else:
-                                        index = file.rindex("\\")
-                                    shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
-
-                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                 {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                connection.commit()
-                                downloaded = True
-
-                        else: # If it hasn't changed then skip this
-                            downloaded = True
-
-                    elif stories[i][2] != highlight_id: # It's from another highlight
-                        folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
-                        if len(folders) == 1:
-                            files = glob.glob(folders[0] + f"/{story_pk}*")
-                            if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
-                                for file in files:
-                                    if '/' in file:
-                                            index = file.rindex("/")
-                                    else:
-                                        index = file.rindex("\\")
-                                    
-                                    if isHighlight:
-                                        shutil.copy(file, path + f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
-                                    else:
-                                        shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
-                                
-                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                 {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                connection.commit()
-                                downloaded = True
-
-                    else: # stories[i][2] == highlight.id (it's from the same highlight)
-                        downloaded = True # Skip
-
-                    break # One story with same story_pk is enough
+            downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
 
             if downloaded:
                 continue # It was found and copied so skip this one
@@ -457,10 +464,9 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         return newStories, number_of_items # Return the list of new stories and the number of items
             
     except:
-        connection.rollback() # Rollback the changes
         return None, number_of_items # Something went wrong
 
-def downloadStories(username, highlight_id, highlight_title, prev_items): # Downloads the stories or highlights of the profile
+def downloadStories(username, highlight_id, highlight_title): # Downloads the stories or highlights of the profile
     # TODO: Needs change for GUI implementation and multithreading
     result = dbCursor.execute(f"""SELECT pk FROM Profile WHERE username = '{username}'""")
     pk = result.fetchone()[0] # Get the pk of the given username
@@ -470,23 +476,13 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
 
     newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories and the number of items
 
-    if number_of_items > prev_items: # If number of items increased then update the number of items in the database
-        try:
-            dbCursor.execute(f"""UPDATE Highlight SET number_of_items = {number_of_items}
-                             WHERE highlight_id = {highlight_id}""")
-            connection.commit()
-
-        except:
-            connection.rollback() # Rollback the changes
-            pass
-
     if newstories is None:
         print("There was an error!")
-        return
+        return number_of_items # At least return the number of items
     
     elif len(newstories) == 0:
         print("There was no story!")
-        return
+        return number_of_items # If there is no story then just return the number of items
 
     for story in newstories:
         try:
@@ -508,6 +504,8 @@ def downloadStories(username, highlight_id, highlight_title, prev_items): # Down
             connection.rollback() # Rollback the changes
             print("There was an error!")
             continue # Couldn't download, skip and try the next one
+    
+    return number_of_items # Return the number of items
 
 def getHighlights(pk, username):
     try:
@@ -544,7 +542,7 @@ def getHighlights(pk, username):
                                 os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
 
                         else:
-                            
+
                             if len(folder) > 0: # If folder exists then rename it
                                 for i in folder[1:]:
                                     shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
