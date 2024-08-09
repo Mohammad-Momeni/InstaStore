@@ -36,7 +36,7 @@ def makeTables(dbCursor): # Creates tables
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
     dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
-                     number_of_items, available, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+                     number_of_items, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
     dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
                      FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
@@ -239,8 +239,8 @@ def addProfile(username): # Adds a profile
                         {data['profile_id']})"""
 
         dbCursor.execute(instruction) # Add the profile to the database
-        dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']}, "Stories",
-                         0, {int(not data['is_private'])})""") # Add a default highlight for the stories (highlight_id = pk)
+        dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']},
+                         "Stories", 0)""") # Add a default highlight for the stories (highlight_id = pk)
         connection.commit()
         
         if not data['is_private']:
@@ -327,10 +327,6 @@ def updateProfile(username):
                         WHERE pk = {new_data['pk']}"""
         
         dbCursor.execute(instruction) # Update profile's information in database
-        
-        if user_data[0] != new_data['is_private']:
-            dbCursor.execute(f"""UPDATE Highlight SET available = {int(not new_data['is_private'])}
-                             WHERE highlight_id = {new_data['pk']}""") # Change availability of stories
         
         connection.commit()
         
@@ -548,12 +544,6 @@ def getHighlights(pk, username):
                         isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight cover
                         if isDownloaded:
                             makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for cover
-                        
-
-                        if highlights[i][4] == 0: # If highlight wasn't avaiable before make it available
-                            dbCursor.execute(f"""UPDATE Highlight SET available = 1
-                                            WHERE highlight_id = {highlight_id}""")
-                            connection.commit()
 
                         del(highlights[i])
                         alreadyExist = True
@@ -563,7 +553,7 @@ def getHighlights(pk, username):
                     if not os.path.exists(path + f"/{username}/Highlights/{title}_{highlight_id}"):
                         os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
                     
-                    dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0, 1)""") # Add it to database
+                    dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
                     connection.commit()
 
                     isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading it's cover
@@ -571,15 +561,7 @@ def getHighlights(pk, username):
                         makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for the cover
 
             except:
-                continue
-
-        for highlight in highlights: # If a highlight isn't in the new list make it unavailable
-            try:
-                dbCursor.execute(f"""UPDATE Highlight SET available = 0 WHERE highlight_id = {highlight[0]}""")
-                connection.commit()
-            
-            except:
-                continue
+                continue # Skip and try the next one
 
         return True
 
