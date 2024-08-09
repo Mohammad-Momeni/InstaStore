@@ -30,7 +30,7 @@ def initialize(): # Initializes basic stuff
 def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
                      page_name, biography, is_private, public_email, media_count,
-                     follower_count, following_count, profile_id, is_profile_downloaded)""")
+                     follower_count, following_count, profile_id)""")
     
     dbCursor.execute("""CREATE TABLE Post(pk, link, number_of_items, caption, timestamp, isTag,
                      PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
@@ -118,17 +118,17 @@ def listProfiles(): # Lists the profiles
     else:
         os.system('clear')
     
-    result = dbCursor.execute("""SELECT pk, username, full_name, biography, is_private, media_count,
-                          follower_count, following_count, profile_id, is_profile_downloaded FROM Profile""")
+    result = dbCursor.execute("""SELECT username, full_name, biography, media_count,
+                              follower_count, following_count FROM Profile""")
     profiles = result.fetchall() # Get the list of profiles
 
     for profile in profiles:
-        biography = profile[3]
+        biography = profile[2]
         if biography is None:
             biography = ''
 
-        print(profile[1] + ":\n" + profile[2] + "\n" + biography + "\nPosts: " + str(profile[5])
-              + "\nFollowers: " + str(profile[6]) + "\nFollowings: " + str(profile[7])) # Show the details of each profile
+        print(profile[0] + ":\n" + profile[1] + "\n" + biography + "\nPosts: " + str(profile[3])
+              + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5])) # Show the details of each profile
         print("---------------------------------")
 
 def getProfileData(username): # Get a profile's data
@@ -236,7 +236,7 @@ def addProfile(username): # Adds a profile
             instruction += f"""'{data['public_email']}'"""
 
         instruction += f""", {data['media_count']}, {data['follower_count']}, {data['following_count']},
-                        {data['profile_id']}, 0)"""
+                        {data['profile_id']})"""
 
         dbCursor.execute(instruction) # Add the profile to the database
         dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']}, "Stories",
