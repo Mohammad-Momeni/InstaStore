@@ -92,7 +92,7 @@ def guessType(file): # Guesses the type of the file
 def downloadLink(link, address): # Downloads the link and saves it to the address
     # TODO: Needs change for GUI implementation and multithreading
     try:
-        media = requests.get(link, allow_redirects=True)
+        media = session.get(link, allow_redirects=True, timeout=60) # Get the media from the link
 
         extension = guess_extension(media.headers['content-type'].partition(';')[0].strip()) # Find the extension from the headers
         if extension is None: # If couldn't find from headers then find from the link
@@ -106,10 +106,10 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
         return False # Couldn't download the link
 
 def tryDownloading(link, address): # Tries to download the link for 5 times
-    isDownloaded = downloadLink(link, address)
+    isDownloaded = downloadLink(link, address) # Try downloading the link
     if not isDownloaded: # If couldn't download the link, Try 5 more times
         for i in range(5):
-            isDownloaded = downloadLink(link, address)
+            isDownloaded = downloadLink(link, address) # Try downloading the link
             if isDownloaded:
                 return True
 
@@ -120,24 +120,28 @@ def tryDownloading(link, address): # Tries to download the link for 5 times
 
 def listProfiles(): # Lists the profiles
     # TODO: Needs change for GUI implementation
-    if os.name == 'nt': # Clearing the screen
-        os.system('cls')
+    try:
+        if os.name == 'nt': # Clearing the screen
+            os.system('cls')
 
-    else:
-        os.system('clear')
+        else:
+            os.system('clear')
+        
+        result = dbCursor.execute("""SELECT username, full_name, biography, media_count,
+                                follower_count, following_count FROM Profile""")
+        profiles = result.fetchall() # Get the list of profiles
+
+        for profile in profiles:
+            biography = profile[2]
+            if biography is None:
+                biography = ''
+
+            print(profile[0] + ":\n" + profile[1] + "\n" + biography + "\nPosts: " + str(profile[3])
+                + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5])) # Show the details of each profile
+            print("---------------------------------")
     
-    result = dbCursor.execute("""SELECT username, full_name, biography, media_count,
-                              follower_count, following_count FROM Profile""")
-    profiles = result.fetchall() # Get the list of profiles
-
-    for profile in profiles:
-        biography = profile[2]
-        if biography is None:
-            biography = ''
-
-        print(profile[0] + ":\n" + profile[1] + "\n" + biography + "\nPosts: " + str(profile[3])
-              + "\nFollowers: " + str(profile[4]) + "\nFollowings: " + str(profile[5])) # Show the details of each profile
-        print("---------------------------------")
+    except:
+        print("Couldn't list the profiles!") # There was an error somewhere
 
 def getProfileData(username): # Get a profile's data
     try:
@@ -252,7 +256,7 @@ def addProfile(username): # Adds a profile
         connection.commit()
         
         if not data['is_private']:
-            getHighlights(data['pk'], data['username']) # If the account isn't private then get it's highlights
+            updateHighlights(data['pk'], data['username']) # If the account isn't private then update it's highlights
 
         listProfiles() # Update the screen
 
@@ -293,21 +297,21 @@ def updateProfile(username):
         new_data = getProfileData(username) # Get new information of user
         if new_data is None:
             print("Couldn't update profile")
-            return
+            return False
         
         if user_data[1] != new_data['profile_id']: # Profile picture has changed
             if not addProfileHistory(new_data['pk'], username, user_data[1]):
                 print("Couldn't update profile")
-                return
+                return False
             
         isDownloaded = tryDownloading(new_data['original_profile_pic_link'], new_data['original_profile_pic']) # Try downloading the profile picture
         if not isDownloaded:
             print("Couldn't update profile")
-            return
+            return False
 
         if not makeThumbnail(new_data['original_profile_pic'], 128): # Try Making a thumbnail for the profile picture
             print("Couldn't update profile")
-            return
+            return False
         
         instruction = f"""UPDATE Profile SET full_name = "{new_data['full_name']}", page_name = """
 
@@ -338,11 +342,18 @@ def updateProfile(username):
         dbCursor.execute(instruction) # Update profile's information in database
         
         connection.commit()
+
+        if not new_data['is_private']:
+            updateHighlights(new_data['pk'], new_data['username']) # If the account isn't private then update it's highlights
+
+        listProfiles() # Update the screen
+
+        return True # Profile updated successfully
         
     except:
         connection.rollback() # Rollback the changes
         print("Couldn't update profile")
-        return
+        return False # Threre was an error somewhere
 
 def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories): # Check if the story is already downloaded
     try:
@@ -507,93 +518,112 @@ def downloadStories(username, highlight_id, highlight_title): # Downloads the st
     
     return number_of_items # Return the number of items
 
-def getHighlights(pk, username):
+def getHighlightsData(pk): # Get the highlights data of the profile
     try:
+        response = session.get(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
+
+        if response.status_code != 200: # Couldn't get the highlights data
+            return None
+        
+        data = json.loads(response.text)
+        data = data['result']
+
+        return data # Return the highlights data
+    
+    except:
+        return None # Couldn't get the highlights data
+
+def updateSingleHighlight(pk, username, newHighlight, highlights, inFunction): # Updates a single highlight
+    try:
+        if (not inFunction) and (not os.path.exists(path + f"/{username}/Highlights")):
+            os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
+    
+        highlight_id = newHighlight['id']
+        highlight_id = int(highlight_id[highlight_id.index(":") + 1:])
+
+        title = newHighlight['title']
+        cover_link = newHighlight['cover_media']['cropped_image_version']['url']
+
+        folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
+
+        for i in range(len(highlights)):
+            if highlights[i][0] == highlight_id: # If highlight already exists
+
+                if (highlights[i][2] == title): # If title hasn't changed
+                    if (len(folder) == 0): # And folder doesn't exist
+                        os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+
+                else:
+
+                    if len(folder) > 0: # If folder exists then rename it
+                        for i in folder[1:]:
+                            shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
+                            shutil.rmtree(i) # Remove the other folders
+                        
+                        os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}") # Rename the folder
+                        
+                    else:
+                        os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+                    
+                    dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
+                                    WHERE highlight_id = {highlight_id}""") # Update the title
+                    connection.commit()
+                
+                isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+                # TODO: The cover may be missing (should use the first highlight instead)
+                if isDownloaded:
+                    makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for cover
+
+                del(highlights[i])
+                return True # Highlight was found and updated
+        
+        # If this highlight is new
+        if len(folder) == 0:
+            os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+
+        else:
+            for i in folder[1:]:
+                shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
+                shutil.rmtree(i) # Remove the other folders
+            
+            os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
+        
+        dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
+        connection.commit()
+
+        isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+        # TODO: The cover may be missing (should use the first highlight instead)
+        if isDownloaded:
+            makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for the cover
+        
+        return True # Highlight was added
+
+    except:
+        connection.rollback() # Rollback the changes
+        return False # There was an error somewhere
+
+def updateHighlights(pk, username): # Updates the highlights of the profile
+    try:
+        data = getHighlightsData(pk) # Get the highlights data
+
+        if data is None: # Couldn't get the highlights data
+            print("Couldn't get the highlights!")
+            return False, data # Couldn't get the highlights data
+
         if not os.path.exists(path + f"/{username}/Highlights"):
             os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
         
         result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
         highlights = result.fetchall() # Get the list of highlights from database
-        
-        response = session.get(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
-        if response.status_code != 200:
-            print("Couldn't get the highlights!")
-            return False
-        
-        data = json.loads(response.text)
-        data = data['result']
 
         for newHighlight in data:
-            try:
-                highlight_id = newHighlight['id']
-                highlight_id = int(highlight_id[highlight_id.index(":") + 1:])
+            updateSingleHighlight(pk, username, newHighlight, highlights, True) # Update the single highlight
 
-                title = newHighlight['title']
-                cover_link = newHighlight['cover_media']['cropped_image_version']['url']
-
-                alreadyExist = False
-                folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
-
-                for i in range(len(highlights)):
-                    if highlights[i][0] == highlight_id: # If highlight already exists
-
-                        if (highlights[i][2] == title): # If title hasn't changed
-                            if (len(folder) == 0): # And folder doesn't exist
-                                os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
-
-                        else:
-
-                            if len(folder) > 0: # If folder exists then rename it
-                                for i in folder[1:]:
-                                    shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
-                                    shutil.rmtree(i) # Remove the other folders
-                                
-                                os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}") # Rename the folder
-                                
-                            else:
-                                os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
-                            
-                            dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
-                                            WHERE highlight_id = {highlight_id}""") # Update the title
-                            connection.commit()
-                        
-                        isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-                        # TODO: The cover may be missing (should use the first highlight instead)
-                        if isDownloaded:
-                            makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for cover
-
-                        del(highlights[i])
-                        alreadyExist = True
-                        break
-                
-                if not alreadyExist: # If this highlight is new
-                    if len(folder) == 0:
-                        os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
-
-                    else:
-                        for i in folder[1:]:
-                            shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
-                            shutil.rmtree(i) # Remove the other folders
-                        
-                        os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
-                    
-                    dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
-                    connection.commit()
-
-                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-                    # TODO: The cover may be missing (should use the first highlight instead)
-                    if isDownloaded:
-                        makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for the cover
-
-            except:
-                connection.rollback() # Rollback the changes
-                continue # Skip and try the next one
-
-        return True
+        return True, data # Return the highlights data
 
     except:
         print("Couldn't get the highlights!")
-        return False
+        return False, data # Couldn't update the highlights
 
 connection, dbCursor = initialize() # Initialize the program
 
