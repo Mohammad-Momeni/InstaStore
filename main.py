@@ -339,7 +339,8 @@ def updateProfile(username, withHighlights = True): # Updates the profile
         dbCursor.execute(instruction) # Update profile's information in database
 
         if user_data[1] != new_data['profile_id']: # Profile picture has changed
-            dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({pk}, {user_data[1]})""") # Add the past profile to history
+            dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({new_data['pk']},
+                             {user_data[1]})""") # Add the past profile to history
         
         connection.commit()
 
