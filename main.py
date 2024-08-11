@@ -633,7 +633,7 @@ def updateHighlights(pk, username): # Updates the highlights of the profile
         print("Couldn't get the highlights!")
         return False, [data, update_states] # Couldn't update the highlights
 
-def downloadSingleHighlightStories(username, highlight_id, direct_call = True): # Downloads the stories of a single highlight
+def downloadSingleHighlightStories(username, highlight_id, highlight_title, direct_call = True): # Downloads the stories of a single highlight
     try:
         if direct_call:
             updated = updateProfile(username, False) # Update the profile
@@ -665,6 +665,7 @@ def downloadSingleHighlightStories(username, highlight_id, direct_call = True): 
             for highlight in data:
                 if highlight['id'] == f"highlight:{highlight_id}":
                     new_data = highlight
+                    highlight_title = new_data['title']
                     break
             else: # Couldn't find the highlight_id in the data
                 print("Couldn't update the highlight!")
@@ -679,7 +680,7 @@ def downloadSingleHighlightStories(username, highlight_id, direct_call = True): 
                 print("Couldn't update the highlight!")
                 return
         
-        number_of_items = downloadStories(pk, username, highlight_id, highlight['title']) # Download the stories of the highlight
+        number_of_items = downloadStories(pk, username, highlight_id, highlight_title) # Download the stories of the highlight
 
         try:
             if number_of_items > 0: # If there was any story
