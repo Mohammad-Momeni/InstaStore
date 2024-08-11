@@ -358,36 +358,39 @@ def updateProfile(username, withHighlights = True): # Updates the profile
 
 def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories): # Check if the story is already downloaded
     try:
+        result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk} AND
+                                  story_pk = {story_pk} AND highlight_id = {highlight_id}""")
+        same_story = result.fetchone() # Check if the story is already downloaded
+
+        if same_story is not None: # An story with same story_pk and highlight_id is already downloaded
+            return True # Story already downloaded
+        
         isHighlight = pk != highlight_id # highlight_id = pk is for stories
 
         for i in range(len(stories)):
             if stories[i][1] == story_pk: # Story already downloaded
                 
-                if stories[i][2] == pk: # It was a story before
-                    if isHighlight: # If now it's a highlight
-                        try:
-                            files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
-                            if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
-                                for file in files:
-                                    if '/' in file:
-                                        index = file.rindex("/")
-                                    else:
-                                        index = file.rindex("\\")
-                                    shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                if stories[i][2] == pk: # It was a story before and now it's a highlight
+                    try:
+                        files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
+                        if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
+                            for file in files:
+                                if '/' in file:
+                                    index = file.rindex("/")
+                                else:
+                                    index = file.rindex("\\")
+                                shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
 
-                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                    {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                connection.commit()
-                                return True
-                        
-                        except:
-                            connection.rollback() # Rollback the changes
-                            return False # Something went wrong but we know it's not from the same highlight
+                            dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
+                            connection.commit()
+                            return True
+                    
+                    except:
+                        connection.rollback() # Rollback the changes
+                        return False # Something went wrong but we know it's not from the same highlight
 
-                    else: # If it hasn't changed then skip this
-                        return True
-
-                elif stories[i][2] != highlight_id: # It's from another highlight
+                else: # It's from another highlight
                     try:
                         folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
                         if len(folders) == 1:
@@ -412,9 +415,6 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
                     except:
                         connection.rollback() # Rollback the changes
                         return False # Something went wrong but we know it's not from the same highlight
-
-                else: # stories[i][2] == highlight.id (it's from the same highlight)
-                    return True # Skip
 
                 break # One story with same story_pk is enough
         
@@ -454,6 +454,7 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         
         for newStory in data:
             story_pk = int(newStory['pk'])
+
             downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
 
             if downloaded or (downloaded is None):
@@ -616,7 +617,11 @@ def updateHighlights(pk, username): # Updates the highlights of the profile
 
         if data is None: # Couldn't get the highlights data
             print("Couldn't get the highlights!")
-            return False, [data, update_states] # Couldn't get the highlights data
+            return data, update_states # Return None and empty list
+        
+        if len(data) == 0: # If there is no highlight
+            print("There is no highlight!")
+            return data, update_states # Return the highlights data and empty list
 
         if not os.path.exists(path + f"/{username}/Highlights"):
             os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
@@ -627,15 +632,15 @@ def updateHighlights(pk, username): # Updates the highlights of the profile
         for newHighlight in data:
             update_states.append(updateSingleHighlight(pk, username, newHighlight, highlights)) # Update this highlight
 
-        return True, [data, update_states] # Return the highlights data and update states
+        return data, update_states # Return the highlights data and update states
 
     except:
         print("Couldn't get the highlights!")
-        return False, [data, update_states] # Couldn't update the highlights
+        return data, update_states # There was an error somewhere but return the highlights data and update states anyway
 
 def downloadSingleHighlightStories(username, highlight_id, highlight_title, direct_call = True): # Downloads the stories of a single highlight
     try:
-        if direct_call:
+        if direct_call: # If the function is called directly
             updated = updateProfile(username, False) # Update the profile
             if not updated:
                 print("Couldn't update the profile!")
@@ -702,6 +707,39 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
 
     except:
         print("Couldn't download the highlight!")
+        return # There was an error somewhere
+
+def downloadHighlightsStories(username, direct_call = True): # Downloads the stories of all highlights
+    try:
+        if direct_call: # If the function is called directly
+            updated = updateProfile(username, False) # Update the profile
+            if not updated:
+                print("Couldn't update the profile!")
+        
+        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = '{username}'""")
+        pk, is_private = result.fetchone() # Get the pk and is_private of the profile
+
+        if is_private == 1: # If the account is private
+            print("This account is private!")
+            return
+        
+        data, update_states = updateHighlights(pk, username) # Update the highlights
+
+        if len(update_states) == 0: # Couldn't update any highlight
+            print("Couldn't update the highlights!")
+            return
+        
+        for i in range(len(update_states)):
+            if update_states[i]: # If the highlight was updated
+                highlight_id = data[i]['id']
+                highlight_id = int(highlight_id[highlight_id.index(":") + 1:]) # Get the highlight_id
+                
+                print(f"Downloading {data[i]['title']}...") # Show the title of the highlight
+
+                downloadSingleHighlightStories(username, highlight_id, data[i]['title'], False) # Download the stories of the highlight
+
+    except:
+        print("There was an error!")
         return # There was an error somewhere
 
 connection, dbCursor = initialize() # Initialize the program
