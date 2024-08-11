@@ -264,7 +264,7 @@ def addProfile(username): # Adds a profile
         connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
-def addProfileHistory(pk, username, profile_id): # Add a profile pic to history
+def addProfileHistory(username, profile_id): # Add a profile pic to history
     try:
         if not os.path.exists(path + f"/{username}/Profiles"):
             os.mkdir(path + f"/{username}/Profiles")
@@ -279,17 +279,14 @@ def addProfileHistory(pk, username, profile_id): # Add a profile pic to history
                 newName = file.rsplit("Profile", 1)
                 newName = newName[0] + f"/History/{profile_id}/" + newName[1] # Change the name from Profile(_thumbnail) to {profile_id}
 
-                shutil.move(file, newName)
-        
-        dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({pk}, {profile_id})""") # Add the past profile to history
+                shutil.move(file, newName) # Move the file to the History folder
 
-        return True
+        return True # Profile added to history
     
     except:
-        connection.rollback() # Rollback the changes
         return False # Couldn't add profile to history
 
-def updateProfile(username):
+def updateProfile(username, withHighlights = True): # Updates the profile
     try:
         result = dbCursor.execute(f"""SELECT is_private, profile_id FROM Profile WHERE username = '{username}'""")
         user_data = result.fetchone() # Get current information of user
@@ -300,7 +297,7 @@ def updateProfile(username):
             return False
         
         if user_data[1] != new_data['profile_id']: # Profile picture has changed
-            if not addProfileHistory(new_data['pk'], username, user_data[1]):
+            if not addProfileHistory(username, user_data[1]):
                 print("Couldn't update profile")
                 return False
             
@@ -340,10 +337,13 @@ def updateProfile(username):
                         WHERE pk = {new_data['pk']}"""
         
         dbCursor.execute(instruction) # Update profile's information in database
+
+        if user_data[1] != new_data['profile_id']: # Profile picture has changed
+            dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({pk}, {user_data[1]})""") # Add the past profile to history
         
         connection.commit()
 
-        if not new_data['is_private']:
+        if withHighlights and (not new_data['is_private']):
             updateHighlights(new_data['pk'], new_data['username']) # If the account isn't private then update it's highlights
 
         listProfiles() # Update the screen
@@ -361,46 +361,56 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
 
         for i in range(len(stories)):
             if stories[i][1] == story_pk: # Story already downloaded
-
+                
                 if stories[i][2] == pk: # It was a story before
                     if isHighlight: # If now it's a highlight
-                        files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
-                        if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
-                            for file in files:
-                                if '/' in file:
-                                    index = file.rindex("/")
-                                else:
-                                    index = file.rindex("\\")
-                                shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                        try:
+                            files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
+                            if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
+                                for file in files:
+                                    if '/' in file:
+                                        index = file.rindex("/")
+                                    else:
+                                        index = file.rindex("\\")
+                                    shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
 
-                            dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                            connection.commit()
-                            return True
+                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                    {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
+                                connection.commit()
+                                return True
+                        
+                        except:
+                            connection.rollback() # Rollback the changes
+                            return False # Something went wrong but we know it's not from the same highlight
 
                     else: # If it hasn't changed then skip this
                         return True
 
                 elif stories[i][2] != highlight_id: # It's from another highlight
-                    folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
-                    if len(folders) == 1:
-                        files = glob.glob(folders[0] + f"/{story_pk}*")
-                        if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
-                            for file in files:
-                                if '/' in file:
-                                        index = file.rindex("/")
-                                else:
-                                    index = file.rindex("\\")
+                    try:
+                        folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
+                        if len(folders) == 1:
+                            files = glob.glob(folders[0] + f"/{story_pk}*")
+                            if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
+                                for file in files:
+                                    if '/' in file:
+                                            index = file.rindex("/")
+                                    else:
+                                        index = file.rindex("\\")
+                                    
+                                    if isHighlight:
+                                        shutil.copy(file, path + f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                                    else:
+                                        shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
                                 
-                                if isHighlight:
-                                    shutil.copy(file, path + f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
-                                else:
-                                    shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
+                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
+                                                    {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
+                                connection.commit()
+                                return True
                             
-                            dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                            connection.commit()
-                            return True
+                    except:
+                        connection.rollback() # Rollback the changes
+                        return False # Something went wrong but we know it's not from the same highlight
 
                 else: # stories[i][2] == highlight.id (it's from the same highlight)
                     return True # Skip
@@ -445,8 +455,8 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
             story_pk = int(newStory['pk'])
             downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
 
-            if downloaded:
-                continue # It was found and copied so skip this one
+            if downloaded or (downloaded is None):
+                continue # It was (found and copied) or (couldn't check and it may be duplicate) so skip this one
 
             timestamp = newStory['taken_at']
 
@@ -477,14 +487,8 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
     except:
         return None, number_of_items # Something went wrong
 
-def downloadStories(username, highlight_id, highlight_title): # Downloads the stories or highlights of the profile
+def downloadStories(pk, username, highlight_id, highlight_title): # Downloads the stories or highlights of the profile
     # TODO: Needs change for GUI implementation and multithreading
-    result = dbCursor.execute(f"""SELECT pk FROM Profile WHERE username = '{username}'""")
-    pk = result.fetchone()[0] # Get the pk of the given username
-    
-    if (pk == highlight_id) and (not os.path.exists(path + f"/{username}/Stories")):
-        os.mkdir(path + f"/{username}/Stories")
-
     newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories and the number of items
 
     if newstories is None:
@@ -533,11 +537,8 @@ def getHighlightsData(pk): # Get the highlights data of the profile
     except:
         return None # Couldn't get the highlights data
 
-def updateSingleHighlight(pk, username, newHighlight, highlights, inFunction): # Updates a single highlight
+def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a single highlight
     try:
-        if (not inFunction) and (not os.path.exists(path + f"/{username}/Highlights")):
-            os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
-    
         highlight_id = newHighlight['id']
         highlight_id = int(highlight_id[highlight_id.index(":") + 1:])
 
@@ -565,9 +566,14 @@ def updateSingleHighlight(pk, username, newHighlight, highlights, inFunction): #
                     else:
                         os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
                     
-                    dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
-                                    WHERE highlight_id = {highlight_id}""") # Update the title
-                    connection.commit()
+                    try:
+                        dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
+                                        WHERE highlight_id = {highlight_id}""") # Update the title
+                        connection.commit()
+                    
+                    except:
+                        connection.rollback() # Rollback the changes
+                        return True # Couldn't Update the database but the folder is updated at least
                 
                 isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
                 # TODO: The cover may be missing (should use the first highlight instead)
@@ -605,10 +611,11 @@ def updateSingleHighlight(pk, username, newHighlight, highlights, inFunction): #
 def updateHighlights(pk, username): # Updates the highlights of the profile
     try:
         data = getHighlightsData(pk) # Get the highlights data
+        update_states = [] # Stores the update states of highlights
 
         if data is None: # Couldn't get the highlights data
             print("Couldn't get the highlights!")
-            return False, data # Couldn't get the highlights data
+            return False, [data, update_states] # Couldn't get the highlights data
 
         if not os.path.exists(path + f"/{username}/Highlights"):
             os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
@@ -617,13 +624,83 @@ def updateHighlights(pk, username): # Updates the highlights of the profile
         highlights = result.fetchall() # Get the list of highlights from database
 
         for newHighlight in data:
-            updateSingleHighlight(pk, username, newHighlight, highlights, True) # Update the single highlight
+            update_states.append(updateSingleHighlight(pk, username, newHighlight, highlights)) # Update this highlight
 
-        return True, data # Return the highlights data
+        return True, [data, update_states] # Return the highlights data and update states
 
     except:
         print("Couldn't get the highlights!")
-        return False, data # Couldn't update the highlights
+        return False, [data, update_states] # Couldn't update the highlights
+
+def downloadSingleHighlightStories(username, highlight_id, direct_call = True): # Downloads the stories of a single highlight
+    try:
+        if direct_call:
+            updated = updateProfile(username, False) # Update the profile
+            if not updated:
+                print("Couldn't update the profile!")
+        
+        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = '{username}'""")
+        pk, is_private = result.fetchone() # Get the pk and is_private of the profile
+
+        if is_private == 1: # If the account is private
+            print("This account is private!")
+            return
+
+        if pk == highlight_id: # If the highlight is the stories
+            if not os.path.exists(path + f"/{username}/Stories"):
+                os.mkdir(path + f"/{username}/Stories") # Make Stories folder
+        
+        elif direct_call: # If the highlight is a highlight and it's a direct call
+            if not os.path.exists(path + f"/{username}/Highlights"):
+                os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
+        
+        if direct_call and pk != highlight_id: # If the highlight is a highlight
+            data = getHighlightsData(pk) # Get the highlights data
+
+            if data is None: # Couldn't get the highlights data
+                print("Couldn't update the highlight!")
+                return
+            
+            for highlight in data:
+                if highlight['id'] == f"highlight:{highlight_id}":
+                    new_data = highlight
+                    break
+            else: # Couldn't find the highlight_id in the data
+                print("Couldn't update the highlight!")
+                return
+            
+            result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
+            highlights = result.fetchall() # Get the list of highlights from database
+
+            state = updateSingleHighlight(pk, username, new_data, highlights) # Update this highlight
+
+            if not state: # Couldn't update the highlight
+                print("Couldn't update the highlight!")
+                return
+        
+        number_of_items = downloadStories(pk, username, highlight_id, highlight['title']) # Download the stories of the highlight
+
+        try:
+            if number_of_items > 0: # If there was any story
+                result = dbCursor.execute(f"""SELECT number_of_items FROM Highlight WHERE highlight_id = {highlight_id}""")
+                old_number_of_items = result.fetchone()[0] # Get the old number of items
+                
+                result = dbCursor.execute(f"""SELECT count(*) FROM Story WHERE pk = {pk} AND highlight_id = {highlight_id}""")
+                number_of_downloaded = result.fetchone()[0] # Get the number of downloaded stories
+
+                new_max = max(number_of_items, number_of_downloaded) # Get the new maximum number of items
+
+                if new_max > old_number_of_items: # If the new maximum is greater than the old maximum
+                    dbCursor.execute(f"""UPDATE Highlight SET number_of_items = {new_max}
+                                    WHERE highlight_id = {highlight_id}""")
+                    connection.commit() # Update the number of items in the database
+
+        except: # Couldn't update the number of items
+            pass
+
+    except:
+        print("Couldn't download the highlight!")
+        return # There was an error somewhere
 
 connection, dbCursor = initialize() # Initialize the program
 
