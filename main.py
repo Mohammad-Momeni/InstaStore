@@ -3,6 +3,7 @@ from PIL import Image, ImageDraw, ImageFilter
 import os
 import shutil
 import glob
+from time import sleep
 from mimetypes import guess_extension, guess_type
 import requests
 import json
@@ -89,6 +90,24 @@ def guessType(file): # Guesses the type of the file
         
     return 'None' # Couldn't guess or it wasn't image or video
 
+def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url and returns the response
+    try:
+        response = session.get(url, timeout=timeout) # Sending the request
+        
+        if response.status_code == 200:
+            return response # Return the response
+        
+        elif (response.status_code) == 429 and (retries > 0): # Too many requests
+            sleep(60) # Sleep for a minute
+
+            return sendRequest(url, retries - 1) # Try again
+        
+        else:
+            return None # Couldn't get the data
+    
+    except:
+        return None # Couldn't get the data
+
 def downloadLink(link, address): # Downloads the link and saves it to the address
     # TODO: Needs change for GUI implementation and multithreading
     try:
@@ -105,10 +124,10 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
     except:
         return False # Couldn't download the link
 
-def tryDownloading(link, address): # Tries to download the link for 5 times
+def tryDownloading(link, address, retries = 3): # Tries to download the link for retries times
     isDownloaded = downloadLink(link, address) # Try downloading the link
     if not isDownloaded: # If couldn't download the link, Try 5 more times
-        for i in range(5):
+        for i in range(retries):
             isDownloaded = downloadLink(link, address) # Try downloading the link
             if isDownloaded:
                 return True
@@ -145,8 +164,8 @@ def listProfiles(): # Lists the profiles
 
 def getProfileData(username): # Get a profile's data
     try:
-        response = session.get(f'https://anonyig.com/api/ig/userInfoByUsername/{username}')
-        if response.status_code != 200:
+        response = sendRequest(f'https://anonyig.com/api/ig/userInfoByUsername/{username}') # Get the profile's data
+        if response is None:
             return None # couldn't get the data
         
         data = json.loads(response.text)
@@ -436,8 +455,8 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         else:
             link = f"https://anonyig.com/api/ig/story?url=https://www.instagram.com/stories/{username}/"
 
-        response = session.get(link) # Get the data
-        if response.status_code != 200:
+        response = sendRequest(link) # Get the data
+        if response is None:
             return None, number_of_items # Couldn't get the data
         
         newStories = [] # List of new stories that need to be downloaded
@@ -526,9 +545,9 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
 
 def getHighlightsData(pk): # Get the highlights data of the profile
     try:
-        response = session.get(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
+        response = sendRequest(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
 
-        if response.status_code != 200: # Couldn't get the highlights data
+        if response is None: # Couldn't get the highlights data
             return None
         
         data = json.loads(response.text)
