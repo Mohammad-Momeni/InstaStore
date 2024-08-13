@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw, ImageFilter
 import os
 import shutil
 import glob
-from time import sleep
+from time import sleep, time
 from mimetypes import guess_extension, guess_type
 import requests
 import json
@@ -53,28 +53,44 @@ def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
                      PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
-def makeThumbnail(address, size): # Makes a thumbnail for given image and saves it
+def circleCrop(image): # Crops the image to a circle
+    blur_radius = 2 # Radius of blurring the edges of the circle thumbnail
+    offset = blur_radius * 2
+
+    mask = Image.new("L", image.size, 0) # Creating a mask for the image
+
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((offset, offset, image.size[0] - offset, image.size[1] - offset), fill=255) # Drawing the circle on the mask
+
+    mask = mask.filter(ImageFilter.GaussianBlur(blur_radius)) # Blurring the edges of the circle
+
+    image.putalpha(mask) # Applying the mask to the image
+    
+def makeThumbnail(address, size, circle = False): # Makes a thumbnail for given image and saves it
     try:
         file = glob.glob(path + address + ".*")
         if len(file) != 1:
             return False # Couldn't find the image
         file = file[0]
         
-        image = Image.open(file)
-        resized_image = image.resize((size, size)) # Thumbnail size
+        image = Image.open(file) # Open the image
 
-        blur_radius = 2 # Radius of blurring the edges of the circle thumbnail
-        offset = blur_radius * 2
-        mask = Image.new("L", resized_image.size, 0)
-        draw = ImageDraw.Draw(mask)
-        draw.ellipse((offset, offset, resized_image.size[0] - offset, resized_image.size[1] - offset), fill=255)
-        mask = mask.filter(ImageFilter.GaussianBlur(blur_radius))
+        if image.height != image.width: # If the image isn't square
+            square_size = min(image.height, image.width) # Get the minimum size
 
-        resized_image.putalpha(mask) # Making the edges transparent
+            height_offset = (image.height - square_size) // 2 # Get the offset for height
+            width_offset = (image.width - square_size) // 2 # Get the offset for width
+
+            image = image.crop((width_offset, height_offset, width_offset + square_size, height_offset + square_size)) # Crop the image to make it square
+
+        resized_image = image.resize((size, size)) # Resize the image to the thumbnail size
+
+        if circle: # If the thumbnail should be a circle
+            circleCrop(resized_image) # Cropping the thumbnail to a circle
 
         resized_image.save(file[:file.rindex('.')] + "_thumbnail.png") # Saving thumbnail at the same path
         
-        return True
+        return True # Thumbnail made successfully
     
     except:
         return False # Couldn't make the thumbnail
@@ -162,6 +178,27 @@ def listProfiles(): # Lists the profiles
     except:
         print("Couldn't list the profiles!") # There was an error somewhere
 
+def moveProfileHistory(username, profile_id): # Moves the past profile files (if any) to History folder 
+    try:
+        files = glob.glob(path + f"/{username}/Profiles/Profile*.*") # Get the profile files
+
+        if len(files) == 0:
+            return True # No profile files to move
+        
+        if not os.path.exists(path + f"/{username}/Profiles/History"): # Make the History folder
+            os.mkdir(path + f"/{username}/Profiles/History")
+
+        for file in files:
+            newName = file.rsplit("Profile", 1)
+            newName = newName[0] + f"/History/{profile_id}" + newName[1] # Change the name from Profile(_thumbnail) to {profile_id}
+
+            shutil.move(file, newName) # Move the file to the History folder
+
+        return True # Profile moved to history successfully
+    
+    except:
+        return False # Couldn't move the profile to history
+
 def getProfileData(username): # Get a profile's data
     try:
         response = sendRequest(f'https://anonyig.com/api/ig/userInfoByUsername/{username}') # Get the profile's data
@@ -231,18 +268,23 @@ def addProfile(username): # Adds a profile
             print("There was an error!")
             return # couldn't get the data
         
-        if not os.path.exists(path + f"/{data['username']}"): # Make the folders for the profile
+        if not os.path.exists(path + f"/{data['username']}"): # Make the profile folder
             os.mkdir(path + f"/{data['username']}")
         
-        if not os.path.exists(path + f"/{data['username']}/Profiles"):
+        if not os.path.exists(path + f"/{data['username']}/Profiles"): # Make the Profiles folder
             os.mkdir(path + f"/{data['username']}/Profiles")
+        
+        # Else if Profiles folder exist then move the past profile files (if any) to History folder
+        elif not moveProfileHistory(data['username'], int(time())):
+            print("Couldn't Move the past profile to history!")
+            return
 
         isDownloaded = tryDownloading(data['original_profile_pic_link'], data['original_profile_pic']) # Try downloading the profile picture
         if not isDownloaded:
             print("There was an error!")
             return
 
-        if not makeThumbnail(data['original_profile_pic'], 128): # Try Making a thumbnail for the profile picture
+        if not makeThumbnail(data['original_profile_pic'], 128, True): # Try Making a thumbnail for the profile picture
             print("There was an error!")
             return
 
@@ -283,28 +325,6 @@ def addProfile(username): # Adds a profile
         connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
-def addProfileHistory(username, profile_id): # Add a profile pic to history
-    try:
-        if not os.path.exists(path + f"/{username}/Profiles"):
-            os.mkdir(path + f"/{username}/Profiles")
-        
-        else: # If Profiles folder exist then move the past profile files (if any) to History folder
-            if not os.path.exists(path + f"/{username}/Profiles/History"):
-                os.mkdir(path + f"/{username}/Profiles/History")
-            
-            files = glob.glob(path + f"/{username}/Profiles/Profile*.*")
-
-            for file in files:
-                newName = file.rsplit("Profile", 1)
-                newName = newName[0] + f"/History/{profile_id}/" + newName[1] # Change the name from Profile(_thumbnail) to {profile_id}
-
-                shutil.move(file, newName) # Move the file to the History folder
-
-        return True # Profile added to history
-    
-    except:
-        return False # Couldn't add profile to history
-
 def updateProfile(username, withHighlights = True): # Updates the profile
     try:
         result = dbCursor.execute(f"""SELECT is_private, profile_id FROM Profile WHERE username = '{username}'""")
@@ -315,8 +335,11 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             print("Couldn't update profile")
             return False
         
-        if user_data[1] != new_data['profile_id']: # Profile picture has changed
-            if not addProfileHistory(username, user_data[1]):
+        if not os.path.exists(path + f"/{username}/Profiles"): # Make the Profiles folder
+            os.mkdir(path + f"/{username}/Profiles")
+        
+        elif user_data[1] != new_data['profile_id']: # Profile picture has changed
+            if not moveProfileHistory(username, user_data[1]): # Move the past profile to history
                 print("Couldn't update profile")
                 return False
             
@@ -325,7 +348,7 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             print("Couldn't update profile")
             return False
 
-        if not makeThumbnail(new_data['original_profile_pic'], 128): # Try Making a thumbnail for the profile picture
+        if not makeThumbnail(new_data['original_profile_pic'], 128, True): # Try Making a thumbnail for the profile picture
             print("Couldn't update profile")
             return False
         
@@ -599,7 +622,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                 isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
                 # TODO: The cover may be missing (should use the first highlight instead)
                 if isDownloaded:
-                    makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for cover
+                    makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, True) # Make thumbnail for cover
 
                 del(highlights[i])
                 return True # Highlight was found and updated
@@ -621,7 +644,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
         isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
         # TODO: The cover may be missing (should use the first highlight instead)
         if isDownloaded:
-            makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64) # Make thumbnail for the cover
+            makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, True) # Make thumbnail for the cover
         
         return True # Highlight was added
 
