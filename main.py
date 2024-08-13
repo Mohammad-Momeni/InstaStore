@@ -88,6 +88,10 @@ def makeThumbnail(address, size, circle = False): # Makes a thumbnail for given 
         if circle: # If the thumbnail should be a circle
             circleCrop(resized_image) # Cropping the thumbnail to a circle
 
+        file = file.rsplit('/', 1) # Split the path to get the filename
+        filename = file[1].replace("_temp", "") # Remove the "_temp" (if any) from the filename
+        file = file[0] + "/" + filename # Get the new path for the thumbnail
+
         resized_image.save(file[:file.rindex('.')] + "_thumbnail.png") # Saving thumbnail at the same path
         
         return True # Thumbnail made successfully
@@ -127,13 +131,13 @@ def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url an
 def downloadLink(link, address): # Downloads the link and saves it to the address
     # TODO: Needs change for GUI implementation and multithreading
     try:
-        media = session.get(link, allow_redirects=True, timeout=60) # Get the media from the link
+        media = requests.get(link, allow_redirects=True, timeout=60) # Get the media from the link
 
         extension = guess_extension(media.headers['content-type'].partition(';')[0].strip()) # Find the extension from the headers
         if extension is None: # If couldn't find from headers then find from the link
             extension = link[:link.index('?')]
             extension = extension[extension.rindex('.'):]
-
+        
         open(path + address + extension, 'wb').write(media.content) # saving the file
         return True
     
@@ -511,20 +515,16 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
             if media_link is None: # If story isn't video then get the best picture
                 media_link = newStory['image_versions2']['candidates'][0]['url']
 
-            thumbnail_link = newStory['image_versions2']['candidates'][-2]['url'] # 320 * 320 image for thumbnail
+            thumbnail_link = newStory['image_versions2']['candidates'][0]['url'] # Get the best picture for thumbnail
 
             if isHighlight: # Set the saving address according to being a story or highlight
                 media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
 
-                thumbnail_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}_thumbnail"
-
             else:
                 media_address = f"/{username}/Stories/{story_pk}"
 
-                thumbnail_address = f"/{username}/Stories/{story_pk}_thumbnail"
-
             newStories.append((pk, story_pk, highlight_id, timestamp, media_link,
-                               media_address, thumbnail_link, thumbnail_address)) # Add the story information to the list of new stories
+                               media_address, thumbnail_link)) # Add the story information to the list of new stories
         
         return newStories, number_of_items # Return the list of new stories and the number of items
             
@@ -549,11 +549,28 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
             if not isDownloaded:
                 print("Couldn't download story!")
                 continue
-                    
-            isDownloaded = tryDownloading(story[6], story[7]) # Try downloading the thumbnail
-            if not isDownloaded:
-                print("Couldn't download story!")
-                continue
+            
+            if story[4] != story[6]: # If the media is video
+                isDownloaded = tryDownloading(story[6], story[5] + "_temp") # Try downloading the picture for the media
+                if not isDownloaded:
+                    print("Couldn't download story!")
+                    continue
+
+                status = makeThumbnail(story[5] + "_temp", 320) # Make thumbnail for the media
+
+                file = glob.glob(path + story[5] + "_temp" + ".*") # Get the file name with the extension
+                file = file[0]
+
+                os.remove(file) # Remove the temporary file
+                
+                if not status: # Couldn't make the thumbnail
+                    print("Couldn't download story!")
+                    continue
+
+            else: # If the media is picture
+                if not makeThumbnail(story[5], 320):
+                    print("Couldn't download story!")
+                    continue
             
             dbCursor.execute(f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
                              {story[2]}, {story[3]})""") # Add the story to the database
