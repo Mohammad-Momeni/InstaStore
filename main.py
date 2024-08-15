@@ -1,5 +1,6 @@
 import sqlite3
 from PIL import Image, ImageDraw, ImageFilter
+from cv2 import VideoCapture, cvtColor, COLOR_BGR2RGB
 import os
 import shutil
 import glob
@@ -66,14 +67,25 @@ def circleCrop(image): # Crops the image to a circle
 
     image.putalpha(mask) # Applying the mask to the image
     
-def makeThumbnail(address, size, circle = False): # Makes a thumbnail for given image and saves it
+def makeThumbnail(address, size, is_video = False, circle = False): # Makes a thumbnail for the given file and saves it
     try:
         file = glob.glob(path + address + ".*")
         if len(file) != 1:
             return False # Couldn't find the image
         file = file[0]
+
+        if is_video: # If the media is video
+            vidcap = VideoCapture(file) # Get the video
+            success, image = vidcap.read() # Read the first frame
+
+            if not success: # Couldn't read the frame
+                return False # Couldn't make the thumbnail
+            
+            image = cvtColor(image, COLOR_BGR2RGB) # Convert the image to RGB format
+            image = Image.fromarray(image) # Convert the image to PIL format
         
-        image = Image.open(file) # Open the image
+        else:
+            image = Image.open(file) # Open the image
 
         if image.height != image.width: # If the image isn't square
             square_size = min(image.height, image.width) # Get the minimum size
@@ -137,6 +149,9 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
         if extension is None: # If couldn't find from headers then find from the link
             extension = link[:link.index('?')]
             extension = extension[extension.rindex('.'):]
+        
+        if extension in [None, '', '.', '.txt']: # If couldn't find the extension or it's a text file (Gone error)
+            return False # Couldn't download the link
         
         open(path + address + extension, 'wb').write(media.content) # saving the file
         return True
@@ -509,13 +524,13 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
             timestamp = newStory['taken_at']
 
             media_link = None
+            is_video = False
             if 'video_versions' in newStory.keys():
                 media_link = newStory['video_versions'][0]['url']
+                is_video = True
 
             if media_link is None: # If story isn't video then get the best picture
                 media_link = newStory['image_versions2']['candidates'][0]['url']
-
-            thumbnail_link = newStory['image_versions2']['candidates'][0]['url'] # Get the best picture for thumbnail
 
             if isHighlight: # Set the saving address according to being a story or highlight
                 media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
@@ -523,8 +538,8 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
             else:
                 media_address = f"/{username}/Stories/{story_pk}"
 
-            newStories.append((pk, story_pk, highlight_id, timestamp, media_link,
-                               media_address, thumbnail_link)) # Add the story information to the list of new stories
+            newStories.append((pk, story_pk, highlight_id, timestamp,
+                               media_link, media_address, is_video)) # Add the story information to the list of new stories
         
         return newStories, number_of_items # Return the list of new stories and the number of items
             
@@ -549,28 +564,10 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
             if not isDownloaded:
                 print("Couldn't download story!")
                 continue
-            
-            if story[4] != story[6]: # If the media is video
-                isDownloaded = tryDownloading(story[6], story[5] + "_temp") # Try downloading the picture for the media
-                if not isDownloaded:
-                    print("Couldn't download story!")
-                    continue
 
-                status = makeThumbnail(story[5] + "_temp", 320) # Make thumbnail for the media
-
-                file = glob.glob(path + story[5] + "_temp" + ".*") # Get the file name with the extension
-                file = file[0]
-
-                os.remove(file) # Remove the temporary file
-                
-                if not status: # Couldn't make the thumbnail
-                    print("Couldn't download story!")
-                    continue
-
-            else: # If the media is picture
-                if not makeThumbnail(story[5], 320):
-                    print("Couldn't download story!")
-                    continue
+            if not makeThumbnail(story[5], 320, story[6]): # Try making a thumbnail for the media
+                print("Couldn't download story!")
+                continue
             
             dbCursor.execute(f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
                              {story[2]}, {story[3]})""") # Add the story to the database
