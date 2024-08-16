@@ -53,6 +53,9 @@ def makeTables(dbCursor): # Creates tables
     
     dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
                      PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+    
+    dbCursor.execute("""CREATE TABLE CoverHistory(highlight_id, cover_id, PRIMARY KEY(highlight_id, cover_id),
+                     FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
 
 def circleCrop(image): # Crops the image to a circle
     blur_radius = 2 # Radius of blurring the edges of the circle thumbnail
@@ -580,6 +583,49 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
     
     return number_of_items # Return the number of items
 
+def addCoverHistory(username, highlight_id, new_cover_link): # Checks the highlight cover and if it has changed then add it to the database
+    try:
+        folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
+
+        if len(folder) == 0: # If the folder doesn't exist
+            return False # There is no folder so there is nothing to do
+        
+        cover_file = glob.glob(folder[0] + "/Cover.*") # Check if the cover exists
+
+        if len(cover_file) == 0: # If the cover doesn't exist
+            return False # There is no cover so there is nothing to do
+        
+        old_cover = open(cover_file[0], 'rb').read() # Get the old cover
+
+        new_cover = requests.get(new_cover_link, allow_redirects=True, timeout=60) # Get the new cover
+
+        if old_cover == new_cover.content: # If the cover hasn't changed
+            return False # The cover is the same
+        
+        if not os.path.exists(folder[0] + "/History"): # Make the History folder
+            os.mkdir(folder[0] + "/History")
+        
+        new_name = int(time()) # Get the new name for the cover
+
+        shutil.move(cover_file[0], folder[0] + f"/History/{new_name}"
+                    + cover_file[0][cover_file[0].rindex('.'):]) # Move the old cover to History folder
+        
+        if os.path.exists(folder[0] + "/Cover_thumbnail.png"): # If the thumbnail exists
+            shutil.move(folder[0] + "/Cover_thumbnail.png", folder[0] +
+                        f"/History/{new_name}_thumbnail.png") # Move the old thumbnail to History folder
+        
+        try:
+            dbCursor.execute(f"""INSERT INTO CoverHistory VALUES({highlight_id}, {new_name})""") # Add the cover to the database
+            connection.commit()
+        
+        except:
+            connection.rollback() # Rollback the changes
+        
+        return True # The cover has changed
+
+    except:
+        return None # Something went wrong
+
 def getHighlightsData(pk): # Get the highlights data of the profile
     try:
         response = sendRequest(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
@@ -633,8 +679,10 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                         connection.rollback() # Rollback the changes
                         return True # Couldn't Update the database but the folder is updated at least
                 
+                if addCoverHistory(username, highlight_id, cover_link) is None: # Check the highlight cover and if it has changed then add it to the database
+                    return True # Couldn't check the cover but the highlight is updated at least
+
                 isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-                # TODO: The cover may be missing (should use the first highlight instead)
                 if isDownloaded:
                     makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, True) # Make thumbnail for cover
 
@@ -652,18 +700,24 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
             
             os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
         
-        dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
-        connection.commit()
+        try:
+            dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
+            connection.commit()
+        
+        except:
+            connection.rollback() # Rollback the changes
+            return False # Couldn't add the highlight to the database
+
+        if addCoverHistory(username, highlight_id, cover_link) is None: # Check the highlight cover and if it has changed then add it to the database
+            return True # Couldn't check the cover but the highlight is added at least
 
         isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-        # TODO: The cover may be missing (should use the first highlight instead)
         if isDownloaded:
             makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, True) # Make thumbnail for the cover
         
         return True # Highlight was added
 
     except:
-        connection.rollback() # Rollback the changes
         return False # There was an error somewhere
 
 def updateHighlights(pk, username): # Updates the highlights of the profile
