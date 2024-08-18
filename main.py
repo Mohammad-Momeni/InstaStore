@@ -494,13 +494,46 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
         connection.rollback() # Rollback the changes
         return None # Something went wrong
 
+def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories): # Gets a single story for download
+    try:
+        isHighlight = pk != highlight_id # highlight_id = pk is for stories
+
+        story_pk = int(new_story['pk']) # The story's pk
+
+        downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
+
+        if downloaded or (downloaded is None):
+            return None # It was (found and copied) or (couldn't check and it may be duplicate) so skip this one
+
+        timestamp = new_story['taken_at'] # The timestamp of the story
+
+        media_link = None # The media link of the story
+        is_video = False # Is the story is video
+
+        if 'video_versions' in new_story.keys(): # If the story is video
+            media_link = new_story['video_versions'][0]['url']
+            is_video = True
+
+        if media_link is None: # If story isn't video then get the best picture
+            media_link = new_story['image_versions2']['candidates'][0]['url']
+
+        if isHighlight: # Set the saving address according to being a story or highlight
+            media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
+
+        else:
+            media_address = f"/{username}/Stories/{story_pk}"
+        
+        return (pk, story_pk, highlight_id, timestamp, media_link, media_address, is_video) # Return the story information
+    
+    except:
+        return None # Something went wrong
+
 def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
     try:
         number_of_items = 0 # Number of items in the stories or highlights
 
-        isHighlight = pk != highlight_id # highlight_id = pk is for stories
-
-        if isHighlight: # Get the proper link according to being a story or highlight
+        # Get the proper link according to being a story or highlight
+        if pk != highlight_id: # highlight_id == pk is for stories
             link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
 
         else:
@@ -522,33 +555,13 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
         result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
         stories = result.fetchall() # Get the list of already downloaded stories from database
         
-        for newStory in data:
-            story_pk = int(newStory['pk'])
+        for new_story in data:
+            new_story_data = getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories) # Get the story information
 
-            downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
+            if new_story_data is None:
+                continue # Couldn't get the story information so skip this one
 
-            if downloaded or (downloaded is None):
-                continue # It was (found and copied) or (couldn't check and it may be duplicate) so skip this one
-
-            timestamp = newStory['taken_at']
-
-            media_link = None
-            is_video = False
-            if 'video_versions' in newStory.keys():
-                media_link = newStory['video_versions'][0]['url']
-                is_video = True
-
-            if media_link is None: # If story isn't video then get the best picture
-                media_link = newStory['image_versions2']['candidates'][0]['url']
-
-            if isHighlight: # Set the saving address according to being a story or highlight
-                media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
-
-            else:
-                media_address = f"/{username}/Stories/{story_pk}"
-
-            newStories.append((pk, story_pk, highlight_id, timestamp,
-                               media_link, media_address, is_video)) # Add the story information to the list of new stories
+            newStories.append(new_story_data) # Add the story information to the list of new stories
         
         return newStories, number_of_items # Return the list of new stories and the number of items
             
