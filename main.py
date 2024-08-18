@@ -312,7 +312,7 @@ def addProfile(username): # Adds a profile
             print("There was an error!")
             return
 
-        if not makeThumbnail(data['original_profile_pic'], 128, True): # Try Making a thumbnail for the profile picture
+        if not makeThumbnail(data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
             print("There was an error!")
             return
 
@@ -376,7 +376,7 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             print("Couldn't update profile")
             return False
 
-        if not makeThumbnail(new_data['original_profile_pic'], 128, True): # Try Making a thumbnail for the profile picture
+        if not makeThumbnail(new_data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
             print("Couldn't update profile")
             return False
         
@@ -494,10 +494,30 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
         connection.rollback() # Rollback the changes
         return None # Something went wrong
 
+def getStoriesData(pk, username, highlight_id): # Gets the stories (or highlights) data of the profile
+    try:
+        # Get the proper link according to being a story or highlight
+        if pk != highlight_id: # highlight_id == pk is for stories
+            link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
+
+        else:
+            link = f"https://anonyig.com/api/ig/story?url=https://www.instagram.com/stories/{username}/"
+
+        response = sendRequest(link) # Get the data
+
+        if response is None:
+            return None # Couldn't get the data
+
+        data = json.loads(response.text) # Parse the data to json
+        data = data['result']
+
+        return data # Return the stories data
+    
+    except:
+        return None # Couldn't get the stories data
+
 def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories): # Gets a single story for download
     try:
-        isHighlight = pk != highlight_id # highlight_id = pk is for stories
-
         story_pk = int(new_story['pk']) # The story's pk
 
         downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
@@ -517,7 +537,8 @@ def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stori
         if media_link is None: # If story isn't video then get the best picture
             media_link = new_story['image_versions2']['candidates'][0]['url']
 
-        if isHighlight: # Set the saving address according to being a story or highlight
+        # Set the saving address according to being a story or highlight
+        if pk != highlight_id: # highlight_id == pk is for stories
             media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
 
         else:
@@ -530,30 +551,20 @@ def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stori
 
 def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
     try:
-        number_of_items = 0 # Number of items in the stories or highlights
+        data = getStoriesData(pk, username, highlight_id) # Get the stories data
 
-        # Get the proper link according to being a story or highlight
-        if pk != highlight_id: # highlight_id == pk is for stories
-            link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
+        if data is None:
+            return None, 0 # Couldn't get the stories data
 
-        else:
-            link = f"https://anonyig.com/api/ig/story?url=https://www.instagram.com/stories/{username}/"
-
-        response = sendRequest(link) # Get the data
-        if response is None:
-            return None, number_of_items # Couldn't get the data
-        
-        newStories = [] # List of new stories that need to be downloaded
-
-        data = json.loads(response.text)
-        data = data['result']
-        number_of_items = len(data)
+        number_of_items = len(data) # Number of items in the stories or highlights
 
         if number_of_items == 0:
-            return newStories, number_of_items # Return empty list if there is no story
+            return [], 0 # Return an empty list if there is no story
         
         result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
         stories = result.fetchall() # Get the list of already downloaded stories from database
+
+        newStories = [] # List of new stories that need downloading
         
         for new_story in data:
             new_story_data = getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories) # Get the story information
@@ -587,7 +598,7 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
                 print("Couldn't download story!")
                 continue
 
-            if not makeThumbnail(story[5], 320, story[6]): # Try making a thumbnail for the media
+            if not makeThumbnail(story[5], 320, is_video=story[6]): # Try making a thumbnail for the media
                 print("Couldn't download story!")
                 continue
             
@@ -607,19 +618,19 @@ def addCoverHistory(username, highlight_id, new_cover_link): # Checks the highli
         folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
 
         if len(folder) == 0: # If the folder doesn't exist
-            return False # There is no folder so there is nothing to do
+            return "No File" # There is no folder so there is nothing to do
         
         cover_file = glob.glob(folder[0] + "/Cover.*") # Check if the cover exists
 
         if len(cover_file) == 0: # If the cover doesn't exist
-            return False # There is no cover so there is nothing to do
+            return "No File" # There is no cover so there is nothing to do
         
         old_cover = open(cover_file[0], 'rb').read() # Get the old cover
 
         new_cover = requests.get(new_cover_link, allow_redirects=True, timeout=60) # Get the new cover
 
         if old_cover == new_cover.content: # If the cover hasn't changed
-            return False # The cover is the same
+            return "Same" # The cover is the same
         
         if not os.path.exists(folder[0] + "/History"): # Make the History folder
             os.mkdir(folder[0] + "/History")
@@ -640,7 +651,7 @@ def addCoverHistory(username, highlight_id, new_cover_link): # Checks the highli
         except:
             connection.rollback() # Rollback the changes
         
-        return True # The cover has changed
+        return "Changed" # The cover has changed
 
     except:
         return None # Something went wrong
@@ -698,12 +709,14 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                         connection.rollback() # Rollback the changes
                         return True # Couldn't Update the database but the folder is updated at least
                 
-                if addCoverHistory(username, highlight_id, cover_link) is None: # Check the highlight cover and if it has changed then add it to the database
+                cover_status = addCoverHistory(username, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
+                if cover_status is None:
                     return True # Couldn't check the cover but the highlight is updated at least
 
-                isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-                if isDownloaded:
-                    makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, True) # Make thumbnail for cover
+                if cover_status != "Same": # If the cover file doesn't exist or it has changed
+                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+                    if isDownloaded:
+                        makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for cover
 
                 del(highlights[i])
                 return True # Highlight was found and updated
@@ -727,12 +740,14 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
             connection.rollback() # Rollback the changes
             return False # Couldn't add the highlight to the database
 
-        if addCoverHistory(username, highlight_id, cover_link) is None: # Check the highlight cover and if it has changed then add it to the database
+        cover_status = addCoverHistory(username, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
+        if cover_status is None:
             return True # Couldn't check the cover but the highlight is added at least
 
-        isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-        if isDownloaded:
-            makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, True) # Make thumbnail for the cover
+        if cover_status != "Same": # If the cover file doesn't exist or it has changed
+            isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+            if isDownloaded:
+                makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for the cover
         
         return True # Highlight was added
 
