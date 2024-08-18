@@ -10,7 +10,13 @@ import requests
 import json
 
 path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
+
+headers = { # Headers for session
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+}
+
 session = requests.Session() # Session for requests
+session.headers = headers # Set the headers for the session
 
 def initialize(): # Initializes basic stuff
     try:
@@ -851,6 +857,30 @@ def downloadHighlightsStories(username, direct_call = True): # Downloads the sto
     except:
         print("There was an error!")
         return # There was an error somewhere
+
+def toGoogleTranslateLink(link): # Converts the link to Google Translate version link
+    try:
+        if 'www.' in link: # If the link has www.
+            link = link[link.index('www.') + 4:] # Remove the www. from the link
+        
+        else:
+            link = link[link.index('//') + 2:] # Remove the https:// from the link
+
+        link = link.split('/') # Split the link to parts
+
+        link[0] = "https://" + link[0].replace('.', '-') + ".translate.goog" # Change the link to Google Translate version
+
+        if link[1][-1] != '?': # If the link doesn't have ? at the end
+            link[1] += '?' # Add ? to the end of the link
+        
+        link[1] += '_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_pto=wapp' # Add the translation options to the link
+
+        link = '/'.join(link) # Join the link parts
+
+        return link # Return the Google Translate version link
+    
+    except:
+        return None # Couldn't convert the link
 
 connection, dbCursor = initialize() # Initialize the program
 
