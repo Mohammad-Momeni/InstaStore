@@ -894,14 +894,11 @@ def toGoogleTranslateLink(link): # Converts the link to Google Translate version
         else:
             link = link[link.index('//') + 2:] # Remove the https:// from the link
 
-        link = link.split('/') # Split the link to parts
+        link = link.split('/', 1) # Split the link to parts
 
         link[0] = "https://" + link[0].replace('.', '-') + ".translate.goog" # Change the link to Google Translate version
-
-        if link[1][-1] != '?': # If the link doesn't have ? at the end
-            link[1] += '?' # Add ? to the end of the link
         
-        link[1] += '_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_pto=wapp' # Add the translation options to the link
+        link[1] += '?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_pto=wapp' # Add the translation options to the link
 
         link = '/'.join(link) # Join the link parts
 
