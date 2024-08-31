@@ -953,6 +953,25 @@ def callPostAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Calls 
     except:
         return None # Couldn't get the posts data
 
+def addSinglePost(pk, post_code, is_tag): # Adds a single post to the database
+    try:
+        result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = "{post_code}" AND is_tag = {is_tag}""")
+        doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
+        
+        if len(doesExist) == 0: # If the post isn't recorded
+            try:
+                dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, "{post_code}", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
+                connection.commit() # Commit the changes
+            
+            except:
+                connection.rollback() # Rollback the changes
+                return False # Couldn't add the post to the database
+        
+        return True # The post is added to the database or it's already recorded
+    
+    except:
+        return False # Couldn't add the post to the database
+
 def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the profile
     try:
         if is_tag: # If the posts are tagged posts
@@ -964,14 +983,12 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
         soap = callPostAPI(pk, username, is_tag, is_cursor=False) # Get the data
 
         if soap is None: # If there is an error
-            return None # Couldn't get the data
+            return False # Couldn't get the data
     
     except:
-        return None # Couldn't get the data
+        return False # Couldn't get the data
     
     try:
-        posts = [] # List of posts data
-
         result = dbCursor.execute(f"""SELECT {instruction} FROM Profile
                                 WHERE username = '{username}'""") # Get the last post that is checked
         
@@ -985,19 +1002,8 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
             post_code = items[i].find(attrs={'class': 'img'}).find('a').attrs['href'] # Get the post link
             post_code = post_code[post_code.index('p/') + 2:post_code.rindex('/')] # Get the post code
 
-            result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = "{post_code}" AND is_tag = {is_tag}""")
-            doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
-            
-            if len(doesExist) == 0: # If the post isn't recorded
-                try:
-                    dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, "{post_code}", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
-                    connection.commit() # Commit the changes
-
-                    posts.append(post_code) # Add the post code to the list of posts data
-                
-                except:
-                    connection.rollback() # Rollback the changes
-                    new_last_post = post_code # Couldn't add the post to the database
+            if not addSinglePost(pk, post_code, is_tag): # Add the post to the database
+                new_last_post = post_code # Couldn't add the post to the database
             
             if (is_tag and i == 0) or ((not is_tag) and i == 3): # If it's the first tagged post or the 4th post (the first post that is certainly not pinned)
                 new_last_post = post_code # Set the last post that is checked
@@ -1012,7 +1018,7 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
                 except:
                     connection.rollback() # Rollback the changes
 
-                return posts # Return the posts data
+                return True # All the posts are checked
         
         try:
             cursor = soap.find(attrs={'class': 'load-more'})
@@ -1024,7 +1030,7 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
                                 WHERE username = '{username}'""") # Update the last post that is checked
                 connection.commit() # Commit the changes
 
-            return posts # There is no more post
+            return True # All the posts are checked
         
         couldnt_get_all = False # Flag for if couldn't get all the posts data
 
@@ -1040,19 +1046,8 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
             for item in items:
                 post_code = item['code'] # Get the post code
 
-                result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = "{post_code}" AND is_tag = {is_tag}""")
-                doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
-                
-                if len(doesExist) == 0: # If the post isn't recorded
-                    try:
-                        dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, "{post_code}", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
-                        connection.commit() # Commit the changes
-
-                        posts.append(post_code) # Add the post code to the list of posts data
-                    
-                    except:
-                        connection.rollback() # Rollback the changes
-                        new_last_post = post_code # Couldn't add the post to the database
+                if not addSinglePost(pk, post_code, is_tag): # Add the post to the database
+                    new_last_post = post_code # Couldn't add the post to the database
                 
                 if last_post == post_code: # If the post is the last post that is checked
                     try:
@@ -1064,7 +1059,7 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
                     except:
                         connection.rollback() # Rollback the changes
 
-                    return posts # Return the posts data
+                    return True # All the posts are checked
             
             if data['hasNext']: # If there is more post
                 cursor = data['cursor'] # Get the cursor for the next set of posts
@@ -1081,10 +1076,10 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
         except:
             connection.rollback() # Rollback the changes
         
-        return posts # Return the posts data
+        return True # All the posts are checked
     
     except:
-        return posts # Couldn't get all the posts data
+        return False # Couldn't get all the posts data
 
 connection, dbCursor = initialize() # Initialize the program
 
