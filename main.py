@@ -7,6 +7,7 @@ import glob
 from time import sleep, time
 from mimetypes import guess_extension, guess_type
 import requests
+from bs4 import BeautifulSoup
 import json
 
 path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
@@ -46,16 +47,17 @@ def initialize(): # Initializes basic stuff
 def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
                      page_name, biography, is_private, public_email, media_count,
-                     follower_count, following_count, profile_id)""")
+                     follower_count, following_count, profile_id, last_post_code, last_tagged_post_code)""")
     
-    dbCursor.execute("""CREATE TABLE Post(pk, link, number_of_items, caption, timestamp, isTag,
-                     PRIMARY KEY(pk, link), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+    dbCursor.execute("""CREATE TABLE Post(pk, post_code, is_tag, number_of_items, caption, timestamp,
+                     PRIMARY KEY(pk, post_code, is_tag), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
 
     dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
                      number_of_items, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
     
-    dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp, PRIMARY KEY(pk, story_pk, highlight_id),
-                     FOREIGN KEY(pk) REFERENCES Profile(pk), FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
+    dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp,
+                     PRIMARY KEY(pk, story_pk, highlight_id), FOREIGN KEY(pk) REFERENCES Profile(pk),
+                     FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
     
     dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
                      PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
@@ -139,7 +141,7 @@ def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url an
             return response # Return the response
         
         elif (response.status_code) == 429 and (retries > 0): # Too many requests
-            sleep(60) # Sleep for a minute
+            sleep(30) # Sleep for 30 seconds
 
             return sendRequest(url, retries - 1) # Try again
         
@@ -342,7 +344,7 @@ def addProfile(username): # Adds a profile
         dbCursor.execute(instruction) # Add the profile to the database
         dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']},
                          "Stories", 0)""") # Add a default highlight for the stories (highlight_id = pk)
-        connection.commit()
+        connection.commit() # Commit the changes
         
         if not data['is_private']:
             updateHighlights(data['pk'], data['username']) # If the account isn't private then update it's highlights
@@ -412,7 +414,7 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({new_data['pk']},
                              {user_data[1]})""") # Add the past profile to history
         
-        connection.commit()
+        connection.commit() # Commit the changes
 
         if withHighlights and (not new_data['is_private']):
             updateHighlights(new_data['pk'], new_data['username']) # If the account isn't private then update it's highlights
@@ -453,7 +455,7 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
 
                             dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                 {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                            connection.commit()
+                            connection.commit() # Commit the changes
                             return True
                     
                     except:
@@ -479,7 +481,7 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
                                 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                     {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                connection.commit()
+                                connection.commit() # Commit the changes
                                 return True
                             
                     except:
@@ -604,7 +606,7 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
             
             dbCursor.execute(f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
                              {story[2]}, {story[3]})""") # Add the story to the database
-            connection.commit()
+            connection.commit() # Commit the changes
 
         except:
             connection.rollback() # Rollback the changes
@@ -646,7 +648,7 @@ def addCoverHistory(username, highlight_id, new_cover_link): # Checks the highli
         
         try:
             dbCursor.execute(f"""INSERT INTO CoverHistory VALUES({highlight_id}, {new_name})""") # Add the cover to the database
-            connection.commit()
+            connection.commit() # Commit the changes
         
         except:
             connection.rollback() # Rollback the changes
@@ -703,7 +705,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                     try:
                         dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
                                         WHERE highlight_id = {highlight_id}""") # Update the title
-                        connection.commit()
+                        connection.commit() # Commit the changes
                     
                     except:
                         connection.rollback() # Rollback the changes
@@ -734,7 +736,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
         
         try:
             dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
-            connection.commit()
+            connection.commit() # Commit the changes
         
         except:
             connection.rollback() # Rollback the changes
@@ -836,15 +838,15 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
                 result = dbCursor.execute(f"""SELECT number_of_items FROM Highlight WHERE highlight_id = {highlight_id}""")
                 old_number_of_items = result.fetchone()[0] # Get the old number of items
                 
-                result = dbCursor.execute(f"""SELECT count(*) FROM Story WHERE pk = {pk} AND highlight_id = {highlight_id}""")
+                result = dbCursor.execute(f"""SELECT COUNT(*) FROM Story WHERE pk = {pk} AND highlight_id = {highlight_id}""")
                 number_of_downloaded = result.fetchone()[0] # Get the number of downloaded stories
 
                 new_max = max(number_of_items, number_of_downloaded) # Get the new maximum number of items
 
                 if new_max > old_number_of_items: # If the new maximum is greater than the old maximum
                     dbCursor.execute(f"""UPDATE Highlight SET number_of_items = {new_max}
-                                    WHERE highlight_id = {highlight_id}""")
-                    connection.commit() # Update the number of items in the database
+                                    WHERE highlight_id = {highlight_id}""") # Update the number of items in the database
+                    connection.commit() # Commit the changes
 
         except: # Couldn't update the number of items
             pass
@@ -897,8 +899,14 @@ def toGoogleTranslateLink(link): # Converts the link to Google Translate version
         link = link.split('/', 1) # Split the link to parts
 
         link[0] = "https://" + link[0].replace('.', '-') + ".translate.goog" # Change the link to Google Translate version
+
+        if not '?' in link[1]: # If there is no ? in the link
+            link[1] += '?' # Add ? to the link
         
-        link[1] += '?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_pto=wapp' # Add the translation options to the link
+        else: # If there is ? in the link
+            link[1] += '&' # Add & to the link
+        
+        link[1] += '_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_pto=wapp' # Add the translation options to the link
 
         link = '/'.join(link) # Join the link parts
 
@@ -906,6 +914,159 @@ def toGoogleTranslateLink(link): # Converts the link to Google Translate version
     
     except:
         return None # Couldn't convert the link
+
+def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the profile
+    try:
+        # Get the proper link according to being a post or tagged post
+        if is_tag: # If the posts are tagged posts
+            link = f"https://imginn.com/tagged/{username}" # Get the tagged posts page link
+
+            instruction = "last_tagged_post_code" # The instruction for the last post
+
+        else:
+            link = f"https://imginn.com/{username}" # Get the posts page link
+
+            instruction = "last_post_code" # The instruction for the last post
+
+        response = sendRequest(toGoogleTranslateLink(link)) # Get the data
+
+        if response is None:
+            return None # Couldn't get the data
+
+        soap = BeautifulSoup(response.text, 'html.parser') # Parse the response using BeautifulSoup to get the data
+    
+    except:
+        return None # Couldn't get the data
+    
+    try:
+        posts = [] # List of posts data
+
+        result = dbCursor.execute(f"""SELECT {instruction} FROM Profile
+                                WHERE username = '{username}'""") # Get the last post that is checked
+        
+        last_post = result.fetchone()[0] # Get the last post that is checked
+
+        new_last_post = last_post # The new last post that is checked
+
+        items = soap.find_all(attrs={'class': 'item'}) # Get the items of the posts
+
+        for i in range (len(items)):
+            post_code = items[i].find(attrs={'class': 'img'}).find('a').attrs['href'] # Get the post link
+            post_code = post_code[post_code.index('p/') + 2:post_code.rindex('/')] # Get the post code
+
+            result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = "{post_code}" AND is_tag = {is_tag}""")
+            doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
+            
+            if len(doesExist) == 0: # If the post isn't recorded
+                try:
+                    dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, "{post_code}", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
+                    connection.commit() # Commit the changes
+
+                    posts.append(post_code) # Add the post code to the list of posts data
+                
+                except:
+                    connection.rollback() # Rollback the changes
+                    new_last_post = post_code # Couldn't add the post to the database
+            
+            if (is_tag and i == 0) or ((not is_tag) and i == 3): # If it's the first tagged post or the 4th post (the first post that is certainly not pinned)
+                new_last_post = post_code # Set the last post that is checked
+            
+            if (i > 2 or is_tag) and last_post == post_code: # If the post is the last post that is checked
+                try:
+                    if new_last_post != last_post: # If the last post that is checked has changed
+                        dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                                        WHERE username = '{username}'""") # Update the last post that is checked
+                        connection.commit() # Commit the changes
+                
+                except:
+                    connection.rollback() # Rollback the changes
+
+                return posts # Return the posts data
+        
+        try:
+            cursor = soap.find(attrs={'class': 'load-more'})
+            cursor = cursor.attrs['data-cursor'] # Get the cursor for the next set of posts
+        
+        except:
+            if new_last_post != last_post: # If the last post that is checked has changed
+                dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                                WHERE username = '{username}'""") # Update the last post that is checked
+                connection.commit() # Commit the changes
+
+            return posts # There is no more post
+        
+        couldnt_get_all = False # Flag for if couldn't get all the posts data
+
+        while True: # Get the next set of posts until there is no more post
+            if is_tag: # If the posts are tagged posts
+                link = f"https://imginn.com/api/tagged?id={pk}&cursor={cursor}" # Get the tagged posts data link
+            
+            else:
+                link = f"https://imginn.com/api/posts/?id={pk}&cursor={cursor}" # Get the posts data link
+            
+            response = sendRequest(toGoogleTranslateLink(link)) # Get the data
+
+            if response is None: # Couldn't get the data
+                couldnt_get_all = True # Couldn't get all the posts data
+                break
+
+            data = json.loads(response.text) # Parse the data to json
+            
+            if ((not is_tag) and (data['code'] != 200)) or ((is_tag) and (len(data.keys()) == 0)): # Couldn't get the data
+                couldnt_get_all = True # Couldn't get all the posts data
+                break
+
+            items = data['items'] # Get the items of the posts
+            
+            for item in items:
+                post_code = item['code'] # Get the post code
+
+                result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = "{post_code}" AND is_tag = {is_tag}""")
+                doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
+                
+                if len(doesExist) == 0: # If the post isn't recorded
+                    try:
+                        dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, "{post_code}", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
+                        connection.commit() # Commit the changes
+
+                        posts.append(post_code) # Add the post code to the list of posts data
+                    
+                    except:
+                        print("Errrrrror")
+                        connection.rollback() # Rollback the changes
+                        new_last_post = post_code # Couldn't add the post to the database
+                
+                if last_post == post_code: # If the post is the last post that is checked
+                    try:
+                        if new_last_post != last_post: # If the last post that is checked has changed
+                            dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                                            WHERE username = '{username}'""") # Update the last post that is checked
+                            connection.commit() # Commit the changes
+                    
+                    except:
+                        connection.rollback() # Rollback the changes
+
+                    return posts # Return the posts data
+            
+            if data['hasNext']: # If there is more post
+                cursor = data['cursor'] # Get the cursor for the next set of posts
+            
+            else:
+                break # There is no more post
+        
+        try:
+            if (not couldnt_get_all) and (new_last_post != last_post): # If the last post that is checked has changed
+                dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                                WHERE username = '{username}'""") # Update the last post that is checked
+                connection.commit() # Commit the changes
+        
+        except:
+            connection.rollback() # Rollback the changes
+        
+        return posts # Return the posts data
+    
+    except:
+        return posts # Couldn't get all the posts data
 
 connection, dbCursor = initialize() # Initialize the program
 
