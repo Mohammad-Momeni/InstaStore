@@ -915,25 +915,56 @@ def toGoogleTranslateLink(link): # Converts the link to Google Translate version
     except:
         return None # Couldn't convert the link
 
-def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the profile
+def callPostAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Calls the API for the posts (or tagged) data of the profile
     try:
-        # Get the proper link according to being a post or tagged post
+        # Get the proper link according to being a post or tagged post and having a cursor or not
         if is_tag: # If the posts are tagged posts
-            link = f"https://imginn.com/tagged/{username}" # Get the tagged posts page link
-
-            instruction = "last_tagged_post_code" # The instruction for the last post
-
+            if is_cursor: # If there is a cursor
+                link = f"https://imginn.com/api/tagged?id={pk}&cursor={cursor}" # Call the tagged posts data API with the cursor
+            
+            else: # If there is no cursor
+                link = f"https://imginn.com/tagged/{username}" # Call the tagged posts page link
+        
         else:
-            link = f"https://imginn.com/{username}" # Get the posts page link
-
-            instruction = "last_post_code" # The instruction for the last post
-
+            if is_cursor: # If there is a cursor
+                link = f"https://imginn.com/api/posts/?id={pk}&cursor={cursor}" # Call the posts data API with the cursor
+            
+            else: # If there is no cursor
+                link = f"https://imginn.com/{username}" # Call the posts page link
+        
         response = sendRequest(toGoogleTranslateLink(link)) # Get the data
 
         if response is None:
             return None # Couldn't get the data
+        
+        if is_cursor: # If there is a cursor
+            data = json.loads(response.text) # Parse the data to json
 
-        soap = BeautifulSoup(response.text, 'html.parser') # Parse the response using BeautifulSoup to get the data
+            if ((not is_tag) and (data['code'] != 200)) or ((is_tag) and (len(data.keys()) == 0)): # There is an error
+                return None # Couldn't get the data
+            
+            return data # Return the data
+        
+        else: # If there is no cursor
+            soap = BeautifulSoup(response.text, 'html.parser') # Parse the response using BeautifulSoup to get the data
+
+            return soap # Return the data
+    
+    except:
+        return None # Couldn't get the posts data
+
+def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the profile
+    try:
+        if is_tag: # If the posts are tagged posts
+            instruction = "last_tagged_post_code" # The instruction for the last post
+        
+        else:
+            instruction = "last_post_code" # The instruction for the last post
+        
+        soap = callPostAPI(pk, username, is_tag, is_cursor=False) # Get the data
+
+        if soap is None: # If there is an error
+            return None # Couldn't get the data
     
     except:
         return None # Couldn't get the data
@@ -998,24 +1029,12 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
         couldnt_get_all = False # Flag for if couldn't get all the posts data
 
         while True: # Get the next set of posts until there is no more post
-            if is_tag: # If the posts are tagged posts
-                link = f"https://imginn.com/api/tagged?id={pk}&cursor={cursor}" # Get the tagged posts data link
-            
-            else:
-                link = f"https://imginn.com/api/posts/?id={pk}&cursor={cursor}" # Get the posts data link
-            
-            response = sendRequest(toGoogleTranslateLink(link)) # Get the data
+            data = callPostAPI(pk, username, is_tag, is_cursor=True, cursor=cursor) # Get the data
 
-            if response is None: # Couldn't get the data
+            if data is None: # Couldn't get the data
                 couldnt_get_all = True # Couldn't get all the posts data
                 break
-
-            data = json.loads(response.text) # Parse the data to json
             
-            if ((not is_tag) and (data['code'] != 200)) or ((is_tag) and (len(data.keys()) == 0)): # Couldn't get the data
-                couldnt_get_all = True # Couldn't get all the posts data
-                break
-
             items = data['items'] # Get the items of the posts
             
             for item in items:
@@ -1032,7 +1051,6 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
                         posts.append(post_code) # Add the post code to the list of posts data
                     
                     except:
-                        print("Errrrrror")
                         connection.rollback() # Rollback the changes
                         new_last_post = post_code # Couldn't add the post to the database
                 
