@@ -338,8 +338,8 @@ def addProfile(username): # Adds a profile
         else:
             instruction += f"""'{data['public_email']}'"""
 
-        instruction += f""", {data['media_count']}, {data['follower_count']}, {data['following_count']},
-                        {data['profile_id']})"""
+        instruction += f""", {data['media_count']}, {data['follower_count']},
+                        {data['following_count']}, {data['profile_id']}, NULL, NULL)"""
 
         dbCursor.execute(instruction) # Add the profile to the database
         dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']},
