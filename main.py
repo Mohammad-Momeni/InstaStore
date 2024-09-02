@@ -915,7 +915,7 @@ def toGoogleTranslateLink(link): # Converts the link to Google Translate version
     except:
         return None # Couldn't convert the link
 
-def callPostAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Calls the API for the posts (or tagged) data of the profile
+def callPostCodeAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Calls the API for the (tagged/normal) posts codes of the profile
     try:
         # Get the proper link according to being a post or tagged post and having a cursor or not
         if is_tag: # If the posts are tagged posts
@@ -972,7 +972,7 @@ def addSinglePost(pk, post_code, is_tag): # Adds a single post to the database
     except:
         return False # Couldn't add the post to the database
 
-def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the profile
+def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes of the profile
     try:
         if is_tag: # If the posts are tagged posts
             instruction = "last_tagged_post_code" # The instruction for the last post
@@ -980,7 +980,7 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
         else:
             instruction = "last_post_code" # The instruction for the last post
         
-        soap = callPostAPI(pk, username, is_tag, is_cursor=False) # Get the data
+        soap = callPostCodeAPI(pk, username, is_tag, is_cursor=False) # Get the data
 
         if soap is None: # If there is an error
             return False # Couldn't get the data
@@ -1035,7 +1035,7 @@ def getPostsData(pk, username, is_tag): # Gets the posts (or tagged) data of the
         couldnt_get_all = False # Flag for if couldn't get all the posts data
 
         while True: # Get the next set of posts until there is no more post
-            data = callPostAPI(pk, username, is_tag, is_cursor=True, cursor=cursor) # Get the data
+            data = callPostCodeAPI(pk, username, is_tag, is_cursor=True, cursor=cursor) # Get the data
 
             if data is None: # Couldn't get the data
                 couldnt_get_all = True # Couldn't get all the posts data
