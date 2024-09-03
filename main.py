@@ -1098,6 +1098,42 @@ def callPostPageAPI(post_code): # Calls the API for the post page
     except:
         return None # Couldn't get the data
 
+def getSinglePostData(post_code): # Gets the data of a single post
+    try:
+        soap = callPostPageAPI(post_code) # Get the data
+
+        if soap is None:
+            return None # Couldn't get the post data
+        
+        data = soap.find(attrs={'class': 'page-post'}) # Find the post data
+
+        caption = data.find(attrs={'class': 'desc'}).text.strip() # Get the caption of the post
+
+        timestamp = int(data.get_attribute_list('data-created')[0]) # Get the timestamp of the post
+        
+        media = data.find_all(attrs={'class': 'media-wrap'}) # Get the media of the post
+
+        links = [] # List of media links
+
+        for item in media:
+            item_type = 'img' # The type of the media
+
+            if len(item.get_attribute_list('class')) == 2: # If the media is video
+                item_type = 'video' # Set the type to video
+            
+            if 'data-src' in item.find(item_type).attrs.keys():
+                link = item.find(item_type).attrs['data-src'] # Get the media link
+            
+            else:
+                link = item.find(item_type).attrs['src'] # Get the media link
+
+            links.append(link) # Add the media link to the list
+        
+        return (caption, timestamp, links) # Return the post data
+    
+    except:
+        return None # Couldn't get the post data
+
 connection, dbCursor = initialize() # Initialize the program
 
 if connection is None: # If there was an error in initializing
