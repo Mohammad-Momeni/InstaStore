@@ -172,10 +172,12 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
 
 def tryDownloading(link, address, retries = 3): # Tries to download the link for retries times
     isDownloaded = downloadLink(link, address) # Try downloading the link
+
     if not isDownloaded: # If couldn't download the link, Try 5 more times
         for i in range(retries):
             isDownloaded = downloadLink(link, address) # Try downloading the link
-            if isDownloaded:
+
+            if isDownloaded: # If downloaded the link
                 return True
 
         if not isDownloaded:
@@ -311,7 +313,8 @@ def addProfile(username): # Adds a profile
             return
 
         isDownloaded = tryDownloading(data['original_profile_pic_link'], data['original_profile_pic']) # Try downloading the profile picture
-        if not isDownloaded:
+
+        if not isDownloaded: # Couldn't download the profile picture
             print("There was an error!")
             return
 
@@ -375,7 +378,8 @@ def updateProfile(username, withHighlights = True): # Updates the profile
                 return False
             
         isDownloaded = tryDownloading(new_data['original_profile_pic_link'], new_data['original_profile_pic']) # Try downloading the profile picture
-        if not isDownloaded:
+
+        if not isDownloaded: # Couldn't download the profile picture
             print("Couldn't update profile")
             return False
 
@@ -597,7 +601,8 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
     for story in newstories:
         try:
             isDownloaded = tryDownloading(story[4], story[5]) # Try downloading the media
-            if not isDownloaded:
+
+            if not isDownloaded: # Couldn't download the media
                 print("Couldn't download story!")
                 continue
 
@@ -718,7 +723,8 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
 
                 if cover_status != "Same": # If the cover file doesn't exist or it has changed
                     isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-                    if isDownloaded:
+
+                    if isDownloaded: # If the cover is downloaded
                         makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for cover
 
                 del(highlights[i])
@@ -749,7 +755,8 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
 
         if cover_status != "Same": # If the cover file doesn't exist or it has changed
             isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
-            if isDownloaded:
+
+            if isDownloaded: # If the cover is downloaded
                 makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for the cover
         
         return True # Highlight was added
@@ -899,6 +906,7 @@ def toGoogleTranslateLink(link): # Converts the link to Google Translate version
 
         link = link.split('/', 1) # Split the link to parts
 
+        link[0] = link[0].replace('-', '--') # Replace - with -- in the link
         link[0] = "https://" + link[0].replace('.', '-') + ".translate.goog" # Change the link to Google Translate version
 
         if not '?' in link[1]: # If there is no ? in the link
@@ -1127,12 +1135,51 @@ def getSinglePostData(post_code): # Gets the data of a single post
             else:
                 link = item.find(item_type).attrs['src'] # Get the media link
 
-            links.append(link) # Add the media link to the list
+            links.append((link, item_type)) # Add the media link to the list
         
         return (caption, timestamp, links) # Return the post data
     
     except:
         return None # Couldn't get the post data
+
+def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
+    try:
+        data = getSinglePostData(post_code) # Get the data
+
+        if data is None: # Couldn't get the data
+            return False # Couldn't download the post
+        
+        caption = data[0] # Get the caption of the post
+        timestamp = data[1] # Get the timestamp of the post
+        links = data[2] # Get the media links of the post
+        
+        for i in range(len(links)):
+            try:
+                isDownloaded = tryDownloading(links[i][0], f"{address}/{post_code}_{i}") # Try downloading the media
+
+                if not isDownloaded: # Couldn't download the media
+                    return False # Couldn't download the post
+                
+                if not makeThumbnail(f"{address}/{post_code}_{i}", 320, is_video=(links[i][1] == 'video')): # Try making a thumbnail for the media
+                    return False # Couldn't download the post
+            
+            except:
+                return False # Couldn't download the post
+        
+        try:
+            dbCursor.execute(f"""UPDATE Post SET number_of_items = {len(links)},
+                             caption = "{caption}", timestamp = {timestamp} WHERE
+                             post_code = "{post_code}" AND is_tag = {is_tag}""") # Update the post in the database
+            connection.commit() # Commit the changes
+        
+        except:
+            connection.rollback() # Rollback the changes
+            return False # Couldn't update the post in the database
+        
+        return True # The post is downloaded
+    
+    except:
+        return False # Couldn't download the post
 
 connection, dbCursor = initialize() # Initialize the program
 
