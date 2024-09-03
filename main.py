@@ -232,6 +232,7 @@ def moveProfileHistory(username, profile_id): # Moves the past profile files (if
 def getProfileData(username): # Get a profile's data
     try:
         response = sendRequest(f'https://anonyig.com/api/ig/userInfoByUsername/{username}') # Get the profile's data
+
         if response is None:
             return None # couldn't get the data
         
@@ -1080,6 +1081,22 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
     
     except:
         return False # Couldn't get all the posts data
+
+def callPostPageAPI(post_code): # Calls the API for the post page
+    try:
+        link = f"https://imginn.com/p/{post_code}" # The link for the post page
+
+        response = sendRequest(toGoogleTranslateLink(link)) # Get the data
+
+        if response is None:
+            return None # Couldn't get the data
+        
+        soap = BeautifulSoup(response.text, 'html.parser') # Parse the response using BeautifulSoup to get the data
+
+        return soap # Return the data
+    
+    except:
+        return None # Couldn't get the data
 
 connection, dbCursor = initialize() # Initialize the program
 
