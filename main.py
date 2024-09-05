@@ -796,6 +796,7 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
     try:
         if direct_call: # If the function is called directly
             updated = updateProfile(username, False) # Update the profile
+            
             if not updated:
                 print("Couldn't update the profile!")
         
@@ -867,6 +868,7 @@ def downloadHighlightsStories(username, direct_call = True): # Downloads the sto
     try:
         if direct_call: # If the function is called directly
             updated = updateProfile(username, False) # Update the profile
+
             if not updated:
                 print("Couldn't update the profile!")
         
@@ -1184,10 +1186,20 @@ def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
     except:
         return False # Couldn't download the post
 
-def downloadPosts(username, is_tag): # Downloads the (tagged/normal) posts of the profile
+def downloadPosts(username, is_tag, direct_call = True): # Downloads the (tagged/normal) posts of the profile
     try:
-        result = dbCursor.execute(f"""SELECT pk FROM Profile WHERE username = '{username}'""")
-        pk = result.fetchone()[0] # Get the pk of the profile
+        if direct_call: # If the function is called directly
+            updated = updateProfile(username, False) # Update the profile
+
+            if not updated:
+                print("Couldn't update the profile!")
+        
+        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = '{username}'""")
+        pk, is_private = result.fetchone() # Get the pk and is_private of the profile
+
+        if is_private == 1: # If the account is private
+            print("This account is private!")
+            return False # It's not possible to download the posts of a private account
 
         addPostsCodes(pk, username, is_tag) # Add the (tagged/normal) posts codes of the profile
 
