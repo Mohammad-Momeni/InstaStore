@@ -231,12 +231,12 @@ def moveProfileHistory(username, profile_id): # Moves the past profile files (if
     except:
         return False # Couldn't move the profile to history
 
-def getProfileData(username): # Get a profile's data
+def getProfileData(username): # Gets a profile's data
     try:
         response = sendRequest(f'https://anonyig.com/api/ig/userInfoByUsername/{username}') # Get the profile's data
 
         if response is None:
-            return None # couldn't get the data
+            return None # Couldn't get the data
         
         data = json.loads(response.text)
         data = data['result']['user']
@@ -282,10 +282,10 @@ def getProfileData(username): # Get a profile's data
         profile['original_profile_pic_link'] = data["hd_profile_pic_url_info"]["url"]
         profile['original_profile_pic'] = f"/{username}/Profiles/Profile"
 
-        return profile # return profile's data
+        return profile # Return profile's data
 
     except:
-        return None # couldn't get the data
+        return None # Couldn't get the data
 
 def addProfile(username): # Adds a profile
     try:
@@ -294,12 +294,12 @@ def addProfile(username): # Adds a profile
 
         if len(doesExist) != 0:
             print("This account is already added!")
-            return # profile already exist, don't need to continue
+            return # Profile already exist, don't need to continue
         
         data = getProfileData(username) # Get the profile's data
         if data is None:
             print("There was an error!")
-            return # couldn't get the data
+            return # Couldn't get the data
         
         if not os.path.exists(path + f"/{data['username']}"): # Make the profile folder
             os.mkdir(path + f"/{data['username']}")
@@ -311,16 +311,21 @@ def addProfile(username): # Adds a profile
         elif not moveProfileHistory(data['username'], int(time())):
             print("Couldn't Move the past profile to history!")
             return
-
+    
         isDownloaded = tryDownloading(data['original_profile_pic_link'], data['original_profile_pic']) # Try downloading the profile picture
 
         if not isDownloaded: # Couldn't download the profile picture
             print("There was an error!")
             return
-
+    
+    except:
+        print("There was an error!")
+        return # Couldn't add the profile
+    
+    try:
         if not makeThumbnail(data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
             print("There was an error!")
-            return
+            return # Couldn't make the thumbnail
 
         instruction = f"""INSERT INTO Profile VALUES({data['pk']}, "{data['username']}", "{data['full_name']}","""
 
@@ -356,6 +361,15 @@ def addProfile(username): # Adds a profile
         listProfiles() # Update the screen
 
     except:
+        try:
+            files = glob.glob(path + f"/{data['username']}/Profiles/Profile*") # Get the profile files
+
+            for file in files:
+                os.remove(file) # Remove the profile files
+        
+        except:
+            pass # Couldn't remove the profile files
+
         connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
@@ -382,7 +396,12 @@ def updateProfile(username, withHighlights = True): # Updates the profile
         if not isDownloaded: # Couldn't download the profile picture
             print("Couldn't update profile")
             return False
-
+    
+    except:
+        print("Couldn't update profile")
+        return False # Couldn't update the profile
+    
+    try:
         if not makeThumbnail(new_data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
             print("Couldn't update profile")
             return False
@@ -429,6 +448,16 @@ def updateProfile(username, withHighlights = True): # Updates the profile
         return True # Profile updated successfully
         
     except:
+        if user_data[1] != new_data['profile_id']: # Profile picture has changed
+            try:
+                files = glob.glob(path + f"/{new_data['username']}/Profiles/Profile*") # Get the profile files
+
+                for file in files:
+                    os.remove(file) # Remove the profile files
+            
+            except:
+                pass # Couldn't remove the profile files
+
         connection.rollback() # Rollback the changes
         print("Couldn't update profile")
         return False # Threre was an error somewhere
@@ -796,7 +825,7 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
     try:
         if direct_call: # If the function is called directly
             updated = updateProfile(username, False) # Update the profile
-            
+
             if not updated:
                 print("Couldn't update the profile!")
         
