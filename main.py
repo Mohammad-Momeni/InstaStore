@@ -154,14 +154,14 @@ def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url an
 def downloadLink(link, address): # Downloads the link and saves it to the address
     # TODO: Needs change for GUI implementation and multithreading
     try:
-        media = requests.get(link, allow_redirects=True, timeout=60) # Get the media from the link
+        media = requests.get(link, headers=headers, timeout=60, allow_redirects=True) # Get the media from the link
 
         extension = guess_extension(media.headers['content-type'].partition(';')[0].strip()) # Find the extension from the headers
         if extension is None: # If couldn't find from headers then find from the link
             extension = link[:link.index('?')]
             extension = extension[extension.rindex('.'):]
         
-        if extension in [None, '', '.', '.txt']: # If couldn't find the extension or it's a text file (Gone error)
+        if extension in [None, '', '.', '.txt', '.html']: # If couldn't find the extension or it's a text or html file (Probably an error)
             return False # Couldn't download the link
         
         open(path + address + extension, 'wb').write(media.content) # saving the file
@@ -1135,6 +1135,9 @@ def getSinglePostData(post_code): # Gets the data of a single post
             else:
                 link = item.find(item_type).attrs['src'] # Get the media link
 
+            if 'imginn' in link: # If the media link is from imginn
+                link = toGoogleTranslateLink(link) # Convert the link to Google Translate version link
+            
             links.append((link, item_type)) # Add the media link to the list
         
         return (caption, timestamp, links) # Return the post data
@@ -1180,6 +1183,38 @@ def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
     
     except:
         return False # Couldn't download the post
+
+def downloadPosts(username, is_tag): # Downloads the (tagged/normal) posts of the profile
+    try:
+        result = dbCursor.execute(f"""SELECT pk FROM Profile WHERE username = '{username}'""")
+        pk = result.fetchone()[0] # Get the pk of the profile
+
+        addPostsCodes(pk, username, is_tag) # Add the (tagged/normal) posts codes of the profile
+
+        result = dbCursor.execute(f"""SELECT post_code FROM Post WHERE pk = {pk} AND
+                                  is_tag = {is_tag} AND caption IS NULL""")
+        posts = result.fetchall() # Get the list of posts that are not downloaded yet
+
+        if is_tag: # If the posts are tagged posts
+            address = f"/{username}/Tagged" # The address for the tagged posts
+        
+        else:
+            address = f"/{username}/Posts" # The address for the normal posts
+
+        if not os.path.exists(path + address):
+            os.mkdir(path + address) # Make the folder for the posts
+        
+        for post in posts:
+            try:
+                downloadSinglePost(post[0], is_tag, address) # Download the post
+            
+            except:
+                continue # Couldn't download the post, skip and try the next one
+        
+        return True # Posts are downloaded
+    
+    except:
+        return False # Couldn't download any post
 
 connection, dbCursor = initialize() # Initialize the program
 
