@@ -290,7 +290,7 @@ def getProfileData(username): # Gets a profile's data
 
 def addProfile(username): # Adds a profile
     try:
-        result = dbCursor.execute(f"""SELECT * FROM Profile WHERE username = '{username}'""")
+        result = dbCursor.execute(f"""SELECT * FROM Profile WHERE username = \"{username}\"""")
         doesExist = result.fetchall() # Get the username information
 
         if len(doesExist) != 0:
@@ -328,25 +328,25 @@ def addProfile(username): # Adds a profile
             print("There was an error!")
             return # Couldn't make the thumbnail
 
-        instruction = f"""INSERT INTO Profile VALUES({data['pk']}, '{data['username']}', '{data['full_name']}',"""
+        instruction = f"""INSERT INTO Profile VALUES({data['pk']}, \"{data['username']}\", \"{data['full_name']}\","""
 
         if data['page_name'] is None:
             instruction += "NULL"
         else:
-            instruction += f"""'{data['page_name']}'"""
+            instruction += f"""\"{data['page_name']}\""""
         
         if data['biography'] == '':
             instruction += f", NULL"
             data['biography'] = None
         else:
-            instruction += f""", '{data['biography']}'"""
+            instruction += f""", \"{data['biography']}\""""
 
         instruction += f""", {data['is_private']},"""
 
         if data['public_email'] is None:
             instruction += "NULL"
         else:
-            instruction += f"""'{data['public_email']}'"""
+            instruction += f"""\"{data['public_email']}\""""
 
         instruction += f""", {data['media_count']}, {data['follower_count']},
                         {data['following_count']}, {data['profile_id']}, NULL, NULL)"""
@@ -376,7 +376,7 @@ def addProfile(username): # Adds a profile
 
 def updateProfile(username, withHighlights = True): # Updates the profile
     try:
-        result = dbCursor.execute(f"""SELECT is_private, profile_id FROM Profile WHERE username = '{username}'""")
+        result = dbCursor.execute(f"""SELECT is_private, profile_id FROM Profile WHERE username = \"{username}\"""")
         user_data = result.fetchone() # Get current information of user
 
         new_data = getProfileData(username) # Get new information of user
@@ -407,12 +407,12 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             print("Couldn't update profile")
             return False
         
-        instruction = f"""UPDATE Profile SET full_name = '{new_data['full_name']}', page_name = """
+        instruction = f"""UPDATE Profile SET full_name = \"{new_data['full_name']}\", page_name = """
 
         if new_data['page_name'] is None:
             instruction += "NULL"
         else:
-            instruction += f"""'{new_data['page_name']}'"""
+            instruction += f"""\"{new_data['page_name']}\""""
         
         instruction += ", biography = "
         
@@ -420,14 +420,14 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             instruction += f"NULL"
             new_data['biography'] = None
         else:
-            instruction += f"""'{new_data['biography']}'"""
+            instruction += f"""\"{new_data['biography']}\""""
 
         instruction += f""", is_private = {new_data['is_private']}, public_email = """
 
         if new_data['public_email'] is None:
             instruction += "NULL"
         else:
-            instruction += f"""'{new_data['public_email']}'"""
+            instruction += f"""\"{new_data['public_email']}\""""
 
         instruction += f""", media_count = {new_data['media_count']}, follower_count = {new_data['follower_count']},
                         following_count = {new_data['following_count']}, profile_id = {new_data['profile_id']}
@@ -739,7 +739,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                         os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
                     
                     try:
-                        dbCursor.execute(f"""UPDATE Highlight SET title = '{title}'
+                        dbCursor.execute(f"""UPDATE Highlight SET title = \"{title}\"
                                         WHERE highlight_id = {highlight_id}""") # Update the title
                         connection.commit() # Commit the changes
                     
@@ -772,7 +772,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
             os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
         
         try:
-            dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, '{title}', 0)""") # Add it to database
+            dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, \"{title}\", 0)""") # Add it to database
             connection.commit() # Commit the changes
         
         except:
@@ -830,7 +830,7 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
             if not updated:
                 print("Couldn't update the profile!")
         
-        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = '{username}'""")
+        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\"""")
         pk, is_private = result.fetchone() # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
@@ -902,7 +902,7 @@ def downloadHighlightsStories(username, direct_call = True): # Downloads the sto
             if not updated:
                 print("Couldn't update the profile!")
         
-        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = '{username}'""")
+        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\"""")
         pk, is_private = result.fetchone() # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
@@ -996,12 +996,12 @@ def callPostCodeAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Ca
 
 def addSinglePost(pk, post_code, is_tag): # Adds a single post to the database
     try:
-        result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = '{post_code}' AND is_tag = {is_tag}""")
+        result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = \"{post_code}\" AND is_tag = {is_tag}""")
         doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
         
         if len(doesExist) == 0: # If the post isn't recorded
             try:
-                dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, '{post_code}', {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
+                dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, \"{post_code}\", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
                 connection.commit() # Commit the changes
             
             except:
@@ -1031,7 +1031,7 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
     
     try:
         result = dbCursor.execute(f"""SELECT {instruction} FROM Profile
-                                WHERE username = '{username}'""") # Get the last post that is checked
+                                WHERE username = \"{username}\"""") # Get the last post that is checked
         
         last_post = result.fetchone()[0] # Get the last post that is checked
 
@@ -1052,8 +1052,8 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
             if (i > 2 or is_tag) and last_post == post_code: # If the post is the last post that is checked
                 try:
                     if new_last_post != last_post: # If the last post that is checked has changed
-                        dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
-                                        WHERE username = '{username}'""") # Update the last post that is checked
+                        dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                                        WHERE username = \"{username}\"""") # Update the last post that is checked
                         connection.commit() # Commit the changes
                 
                 except:
@@ -1067,8 +1067,8 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         
         except:
             if new_last_post != last_post: # If the last post that is checked has changed
-                dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
-                                WHERE username = '{username}'""") # Update the last post that is checked
+                dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                                WHERE username = \"{username}\"""") # Update the last post that is checked
                 connection.commit() # Commit the changes
 
             return True # All the posts are checked
@@ -1093,8 +1093,8 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
                 if last_post == post_code: # If the post is the last post that is checked
                     try:
                         if new_last_post != last_post: # If the last post that is checked has changed
-                            dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
-                                            WHERE username = '{username}'""") # Update the last post that is checked
+                            dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                                            WHERE username = \"{username}\"""") # Update the last post that is checked
                             connection.commit() # Commit the changes
                     
                     except:
@@ -1110,8 +1110,8 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         
         try:
             if (not couldnt_get_all) and (new_last_post != last_post): # If the last post that is checked has changed
-                dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
-                                WHERE username = '{username}'""") # Update the last post that is checked
+                dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                                WHERE username = \"{username}\"""") # Update the last post that is checked
                 connection.commit() # Commit the changes
         
         except:
@@ -1169,7 +1169,7 @@ def getSinglePostData(post_code): # Gets the data of a single post
                     for item in slide:
                         item_type = 'img' # The type of the media
 
-                        if 'video' in item.attrs['class']: # If the media is video
+                        if item.find('video') is not None: # If the media is video
                             item_type = 'video' # Set the type to video
                         
                         link = item.get_attribute_list('data-src')[0] # Get the media link
@@ -1258,9 +1258,11 @@ def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
                 instruction += " NULL," # If the caption is empty
 
             else:
-                instruction += f""" '{caption}', """
+                instruction += f""" \"{caption}\", """
 
-            instruction += f"""timestamp = {timestamp} WHERE post_code = '{post_code}' AND is_tag = {is_tag}"""
+            instruction += f"""timestamp = {timestamp} WHERE post_code = \"{post_code}\" AND is_tag = {is_tag}"""
+
+            print(instruction)
 
             dbCursor.execute(instruction) # Update the post in the database
             connection.commit() # Commit the changes
@@ -1282,7 +1284,7 @@ def downloadPosts(username, is_tag, direct_call = True): # Downloads the (tagged
             if not updated:
                 print("Couldn't update the profile!")
         
-        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = '{username}'""")
+        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\"""")
         pk, is_private = result.fetchone() # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
