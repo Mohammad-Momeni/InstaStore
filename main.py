@@ -8,6 +8,7 @@ from time import sleep, time
 from mimetypes import guess_extension, guess_type
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import unquote
 import json
 
 path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
@@ -327,7 +328,7 @@ def addProfile(username): # Adds a profile
             print("There was an error!")
             return # Couldn't make the thumbnail
 
-        instruction = f"""INSERT INTO Profile VALUES({data['pk']}, "{data['username']}", "{data['full_name']}","""
+        instruction = f"""INSERT INTO Profile VALUES({data['pk']}, '{data['username']}', '{data['full_name']}',"""
 
         if data['page_name'] is None:
             instruction += "NULL"
@@ -406,7 +407,7 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             print("Couldn't update profile")
             return False
         
-        instruction = f"""UPDATE Profile SET full_name = "{new_data['full_name']}", page_name = """
+        instruction = f"""UPDATE Profile SET full_name = '{new_data['full_name']}', page_name = """
 
         if new_data['page_name'] is None:
             instruction += "NULL"
@@ -738,7 +739,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                         os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
                     
                     try:
-                        dbCursor.execute(f"""UPDATE Highlight SET title = "{title}"
+                        dbCursor.execute(f"""UPDATE Highlight SET title = '{title}'
                                         WHERE highlight_id = {highlight_id}""") # Update the title
                         connection.commit() # Commit the changes
                     
@@ -771,7 +772,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
             os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
         
         try:
-            dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, "{title}", 0)""") # Add it to database
+            dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, '{title}', 0)""") # Add it to database
             connection.commit() # Commit the changes
         
         except:
@@ -995,12 +996,12 @@ def callPostCodeAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Ca
 
 def addSinglePost(pk, post_code, is_tag): # Adds a single post to the database
     try:
-        result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = "{post_code}" AND is_tag = {is_tag}""")
+        result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = '{post_code}' AND is_tag = {is_tag}""")
         doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
         
         if len(doesExist) == 0: # If the post isn't recorded
             try:
-                dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, "{post_code}", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
+                dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, '{post_code}', {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
                 connection.commit() # Commit the changes
             
             except:
@@ -1051,7 +1052,7 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
             if (i > 2 or is_tag) and last_post == post_code: # If the post is the last post that is checked
                 try:
                     if new_last_post != last_post: # If the last post that is checked has changed
-                        dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                        dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
                                         WHERE username = '{username}'""") # Update the last post that is checked
                         connection.commit() # Commit the changes
                 
@@ -1066,7 +1067,7 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         
         except:
             if new_last_post != last_post: # If the last post that is checked has changed
-                dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
                                 WHERE username = '{username}'""") # Update the last post that is checked
                 connection.commit() # Commit the changes
 
@@ -1092,7 +1093,7 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
                 if last_post == post_code: # If the post is the last post that is checked
                     try:
                         if new_last_post != last_post: # If the last post that is checked has changed
-                            dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                            dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
                                             WHERE username = '{username}'""") # Update the last post that is checked
                             connection.commit() # Commit the changes
                     
@@ -1109,7 +1110,7 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         
         try:
             if (not couldnt_get_all) and (new_last_post != last_post): # If the last post that is checked has changed
-                dbCursor.execute(f"""UPDATE Profile SET {instruction} = "{new_last_post}"
+                dbCursor.execute(f"""UPDATE Profile SET {instruction} = '{new_last_post}'
                                 WHERE username = '{username}'""") # Update the last post that is checked
                 connection.commit() # Commit the changes
         
@@ -1146,30 +1147,80 @@ def getSinglePostData(post_code): # Gets the data of a single post
         
         data = soap.find(attrs={'class': 'page-post'}) # Find the post data
 
-        caption = data.find(attrs={'class': 'desc'}).text.strip() # Get the caption of the post
+        try:
+            caption = data.find(attrs={'class': 'desc'}).text.strip() # Get the caption of the post
+        
+        except:
+            caption = None # Post doesn't have a caption
 
         timestamp = int(data.get_attribute_list('data-created')[0]) # Get the timestamp of the post
-        
-        media = data.find_all(attrs={'class': 'media-wrap'}) # Get the media of the post
 
         links = [] # List of media links
 
-        for item in media:
-            item_type = 'img' # The type of the media
+        single_media = False # Flag for if the post has single media
 
-            if len(item.get_attribute_list('class')) == 2: # If the media is video
-                item_type = 'video' # Set the type to video
-            
-            if 'data-src' in item.find(item_type).attrs.keys():
-                link = item.find(item_type).attrs['data-src'] # Get the media link
-            
-            else:
-                link = item.find(item_type).attrs['src'] # Get the media link
+        try:
+            swiper = data.find(attrs={'class': 'swiper-wrapper'}) # Get the swiper of the post
 
-            if 'imginn' in link: # If the media link is from imginn
-                link = toGoogleTranslateLink(link) # Convert the link to Google Translate version link
+            if swiper is not None: # If the post has multiple media
+                try:
+                    slide = swiper.find_all(attrs={'class': 'swiper-slide'}) # Get the slides of the post
+
+                    for item in slide:
+                        item_type = 'img' # The type of the media
+
+                        if 'video' in item.attrs['class']: # If the media is video
+                            item_type = 'video' # Set the type to video
+                        
+                        link = item.get_attribute_list('data-src')[0] # Get the media link
+
+                        if 'null.jpg' in link: # If the media link is null
+                            link = item.find(item_type).attrs['poster'] # Get the poster link instead
+                            item_type = 'img' # Set the type to image
+
+                        if 'imginn' in link: # If the media link is from imginn
+                            link = toGoogleTranslateLink(link) # Convert the link to Google Translate version link
+                        
+                        links.append((link, item_type)) # Add the media link to the list
+                
+                except:
+                    return None # Couldn't get the post data
             
-            links.append((link, item_type)) # Add the media link to the list
+            else: # If the post has single media
+                single_media = True # The post has single media
+        
+        except: # If the post has single media
+            single_media = True # The post has single media
+
+        if single_media: # If the post has single media
+            download = data.find(attrs={'class': 'downloads'}) # Get the download section of the post
+
+            if download is not None: # If the post has download section
+                media = data.find(attrs={'class': 'media-wrap'}) # Get the media of the post
+
+                item_type = 'img' # The type of the media
+
+                if len(media.get_attribute_list('class')) == 2: # If the media is video
+                    item_type = 'video' # Set the type to video
+
+                link = download.find('a').attrs['href'] # Get the media link
+
+                if 'u=' in link: # If the media link is from google translation
+                    link = link[link.index('u=') + 2:] # Get rid of google translation part of the link
+
+                    link = unquote(link) # Decode the link
+
+                if 'null.jpg' in link: # If the media link is null
+                    link = media.find(item_type).attrs['poster'] # Get the poster link instead
+                    item_type = 'img' # Set the type to image
+
+                if '&dl' in link: # If the media link is direct download link
+                    link = link[:link.index('&dl')] # Get the media link
+
+                if 'imginn' in link: # If the media link is from imginn
+                    link = toGoogleTranslateLink(link) # Convert the link to Google Translate version link
+                
+                links.append((link, item_type)) # Add the media link to the list
         
         return (caption, timestamp, links) # Return the post data
     
@@ -1201,9 +1252,17 @@ def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
                 return False # Couldn't download the post
         
         try:
-            dbCursor.execute(f"""UPDATE Post SET number_of_items = {len(links)},
-                             caption = "{caption}", timestamp = {timestamp} WHERE
-                             post_code = "{post_code}" AND is_tag = {is_tag}""") # Update the post in the database
+            instruction = f"""UPDATE Post SET number_of_items = {len(links)}, caption =""" # The instruction for updating the post
+
+            if caption is None or caption == "":
+                instruction += " NULL," # If the caption is empty
+
+            else:
+                instruction += f""" '{caption}', """
+
+            instruction += f"""timestamp = {timestamp} WHERE post_code = '{post_code}' AND is_tag = {is_tag}"""
+
+            dbCursor.execute(instruction) # Update the post in the database
             connection.commit() # Commit the changes
         
         except:
@@ -1233,7 +1292,7 @@ def downloadPosts(username, is_tag, direct_call = True): # Downloads the (tagged
         addPostsCodes(pk, username, is_tag) # Add the (tagged/normal) posts codes of the profile
 
         result = dbCursor.execute(f"""SELECT post_code FROM Post WHERE pk = {pk} AND
-                                  is_tag = {is_tag} AND caption IS NULL""")
+                                  is_tag = {is_tag} AND number_of_items IS NULL""")
         posts = result.fetchall() # Get the list of posts that are not downloaded yet
 
         if is_tag: # If the posts are tagged posts
