@@ -1259,6 +1259,8 @@ def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
 
             else:
                 instruction += f""" \"{caption}\", """
+            
+            print(instruction)
 
             instruction += f"""timestamp = {timestamp} WHERE post_code = \"{post_code}\" AND is_tag = {is_tag}"""
 
