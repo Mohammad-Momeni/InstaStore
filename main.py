@@ -6,21 +6,31 @@ import shutil
 import glob
 from time import sleep, time
 from mimetypes import guess_extension, guess_type
-import requests
+from curl_cffi import requests
+import zendriver as zd
 from bs4 import BeautifulSoup
 from urllib.parse import unquote
 import json
 
+INVALID_CHARACTERS = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] # Invalid characters for file names
+
 path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
 
 headers = { # Headers for session
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 }
 
-session = requests.Session() # Session for requests
-session.headers = headers # Set the headers for the session
+profile_data = None # Global variable for profile data
 
-def initialize(): # Initializes basic stuff
+def initialize():
+    '''
+    Initializes the basic stuff for the program
+
+    Returns:
+        connection (sqlite3.Connection): The connection to the database
+        dbCursor (sqlite3.Cursor): The cursor for the database
+    '''
+
     try:
         if not os.path.exists(path):
             os.mkdir(path)
@@ -37,15 +47,24 @@ def initialize(): # Initializes basic stuff
         if initializeTables:
             try:
                 makeTables(dbCursor) # If tables are not created, create them
+            
             except:
                 os.remove(path + "/data.db") # If there was an error then remove the database
                 return None, None
             
         return connection, dbCursor
+    
     except:
         return None, None
 
-def makeTables(dbCursor): # Creates tables
+def makeTables(dbCursor):
+    '''
+    Creates the tables for the database
+
+    Parameters:
+        dbCursor (sqlite3.Cursor): The cursor for the database
+    '''
+
     dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
                      page_name, biography, is_private, public_email, media_count,
                      follower_count, following_count, profile_id, last_post_code, last_tagged_post_code)""")
@@ -66,7 +85,14 @@ def makeTables(dbCursor): # Creates tables
     dbCursor.execute("""CREATE TABLE CoverHistory(highlight_id, cover_id, PRIMARY KEY(highlight_id, cover_id),
                      FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
 
-def circleCrop(image): # Crops the image to a circle
+def circleCrop(image):
+    '''
+    Crops the image to a circle
+
+    Parameters:
+        image (PIL.Image): The image to crop
+    '''
+
     blur_radius = 2 # Radius of blurring the edges of the circle thumbnail
     offset = blur_radius * 2
 
@@ -79,7 +105,20 @@ def circleCrop(image): # Crops the image to a circle
 
     image.putalpha(mask) # Applying the mask to the image
     
-def makeThumbnail(address, size, is_video = False, circle = False): # Makes a thumbnail for the given file and saves it
+def makeThumbnail(address, size, is_video = False, circle = False):
+    '''
+    Makes a thumbnail for the given file and saves it
+
+    Parameters:
+        address (str): The address of the file
+        size (int): The size of the thumbnail
+        is_video (bool): Is the media a video
+        circle (bool): Should the thumbnail be a circle
+    
+    Returns:
+        result (bool): If the thumbnail is made successfully or not
+    '''
+
     try:
         file = glob.glob(path + address + ".*")
         if len(file) != 1:
@@ -123,7 +162,17 @@ def makeThumbnail(address, size, is_video = False, circle = False): # Makes a th
     except:
         return False # Couldn't make the thumbnail
 
-def guessType(file): # Guesses the type of the file
+def guessType(file):
+    '''
+    Guesses the type of the file
+
+    Parameters:
+        file (str): The file to guess the type of
+    
+    Returns:
+        mimestart (str): The type of the file
+    '''
+
     mimestart = guess_type(path + file)[0] # Guessing the type of the file
 
     if mimestart != None:
@@ -134,9 +183,38 @@ def guessType(file): # Guesses the type of the file
         
     return 'None' # Couldn't guess or it wasn't image or video
 
-def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url and returns the response
+def MakeFilenameFriendly(text):
+    '''
+    Makes the text filename friendly
+
+    Parameters:
+        text (str): The text to make filename friendly
+    
+    Returns:
+        text (str): The filename friendly text
+    '''
+
+    for char in INVALID_CHARACTERS:
+        text = text.replace(char, ' ' + str(ord(char)) + ' ') # Replace the invalid characters with their ascii values
+    
+    return text # Return the filename friendly text
+
+def sendRequest(url, payload=None, retries = 3, timeout = 60):
+    '''
+    Sends a request to the url and returns the response
+
+    Parameters:
+        url (str): The url to send the request
+        payload (str): The payload for the request
+        retries (int): The number of retries for the request
+        timeout (int): The timeout for the request
+    
+    Returns:
+        response (requests.Response): The response of the request
+    '''
+
     try:
-        response = session.get(url, timeout=timeout) # Sending the request
+        response = requests.request("POST", url, headers=headers, data=payload, timeout=timeout) # Send the request
         
         if response.status_code == 200:
             return response # Return the response
@@ -144,7 +222,7 @@ def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url an
         elif (response.status_code) == 429 and (retries > 0): # Too many requests
             sleep(30) # Sleep for 30 seconds
 
-            return sendRequest(url, retries - 1) # Try again
+            return sendRequest(url, payload, retries - 1) # Try again
         
         else:
             return None # Couldn't get the data
@@ -152,7 +230,18 @@ def sendRequest(url, timeout = 60, retries = 3): # Sends a request to the url an
     except:
         return None # Couldn't get the data
 
-def downloadLink(link, address): # Downloads the link and saves it to the address
+def downloadLink(link, address):
+    '''
+    Downloads the link and saves it to the address
+
+    Parameters:
+        link (str): The link to download
+        address (str): The address to save the file
+    
+    Returns:
+        result (bool): If the link is downloaded successfully or not
+    '''
+
     # TODO: Needs change for GUI implementation and multithreading
     try:
         media = requests.get(link, headers=headers, timeout=60, allow_redirects=True) # Get the media from the link
@@ -171,7 +260,19 @@ def downloadLink(link, address): # Downloads the link and saves it to the addres
     except:
         return False # Couldn't download the link
 
-def tryDownloading(link, address, retries = 3): # Tries to download the link for retries times
+def tryDownloading(link, address, retries = 3):
+    '''
+    Tries to download the link for retries times
+
+    Parameters:
+        link (str): The link to download
+        address (str): The address to save the file
+        retries (int): The number of retries for the download
+    
+    Returns:
+        result (bool): If the link is downloaded successfully or not
+    '''
+
     isDownloaded = downloadLink(link, address) # Try downloading the link
 
     if not isDownloaded: # If couldn't download the link, Try 5 more times
@@ -186,7 +287,11 @@ def tryDownloading(link, address, retries = 3): # Tries to download the link for
         
     return True
 
-def listProfiles(): # Lists the profiles
+def listProfiles():
+    '''
+    Lists the profiles in the database
+    '''
+
     # TODO: Needs change for GUI implementation
     try:
         if os.name == 'nt': # Clearing the screen
@@ -211,7 +316,18 @@ def listProfiles(): # Lists the profiles
     except:
         print("Couldn't list the profiles!") # There was an error somewhere
 
-def moveProfileHistory(username, profile_id): # Moves the past profile files (if any) to History folder 
+def moveProfileHistory(username, profile_id):
+    '''
+    Moves the past profile files (if any) to History folder
+
+    Parameters:
+        username (str): The username of the profile
+        profile_id (int): The id of the profile
+    
+    Returns:
+        result (bool): If the profile is moved to history successfully or not
+    '''
+
     try:
         files = glob.glob(path + f"/{username}/Profiles/Profile*.*") # Get the profile files
 
@@ -232,15 +348,112 @@ def moveProfileHistory(username, profile_id): # Moves the past profile files (if
     except:
         return False # Couldn't move the profile to history
 
-def getProfileData(username): # Gets a profile's data
+async def response_handler(evt: zd.cdp.network.ResponseReceived):
+    '''
+    Handles the response event for the profile data
+
+    Parameters:
+        evt (zd.cdp.network.ResponseReceived): The event object
+    '''
+
+    # Check if the event resource type is XHR
+    if evt.type_ is zd.cdp.network.ResourceType.XHR:
+        # Check if the event url contains 'userInfo' (this is the request that contains the user profile data)
+        if 'userInfo' in evt.response.url:
+            # get the response body and store it in the global variable
+            global profile_data
+            profile_data = zd.cdp.network.get_response_body(evt.request_id)
+
+async def ProfileDataAPI(username):
+    '''
+    Calls the API to get the profile data
+
+    Parameters:
+        username (str): The username of the user
+    
+    Returns:
+        data (str): The profile data of the user
+    '''
+
     try:
-        response = sendRequest(f'https://anonyig.com/api/ig/userInfoByUsername/{username}') # Get the profile's data
+        # Create a new browser instance in headless mode
+        browser = await zd.start(browser_args=["--headless=new", '--disable-gpu'])
+
+        # Create a new page instance
+        page = await browser.get('https://anonyig.com/en')
+
+        # Add a handler for the ResponseReceived event
+        page.add_handler(zd.cdp.network.ResponseReceived, response_handler)
+
+        # Wait for the search bar to load
+        await page.wait_for('input[type=text]')
+
+        sleep(3) # Wait for 3 seconds
+
+        # Find the search bar
+        username_input = await page.select('input[type=text]')
+
+        # Enter the username in the search bar
+        await username_input.send_keys(username)
+
+        # Find the search button
+        search_button = await page.select('button[class=search-form__button]')
+
+        # Click the search button
+        await search_button.click()
+
+        # Wait for the user profile data to load
+        await page.wait_for('span[class=user-info__username-text]', timeout=60)
+
+        # Check if the request has been captured
+        global profile_data
+        if profile_data:
+            # Get the profile data
+            data = await page.send(cdp_obj=profile_data)
+        
+        else: # The request has not been captured
+            data = None
+        
+        # Close the page
+        await page.close()
+
+        # Stop the browser
+        await browser.stop()
+
+        return data # Return the result
+    
+    except:
+        # Close the page
+        await page.close()
+
+        # Stop the browser
+        await browser.stop()
+
+        return None # There was an error
+
+def getProfileData(username):
+    '''
+    Gets the profile's data
+
+    Parameters:
+        username (str): The username of the profile
+    
+    Returns:
+        profile (dict): The profile's data
+    '''
+
+    try:
+        # Empty the global variable
+        global profile_data
+        profile_data = None
+
+        response = zd.loop().run_until_complete(ProfileDataAPI(username)) # Get the profile's data
 
         if response is None:
             return None # Couldn't get the data
         
-        data = json.loads(response.text)
-        data = data['result']['user']
+        data = json.loads(response[0]) # Parse the data to json
+        data = data['result'][0]['user']
 
         profile = {
             'pk': int(data["pk"]),
@@ -288,7 +501,17 @@ def getProfileData(username): # Gets a profile's data
     except:
         return None # Couldn't get the data
 
-def addProfile(username): # Adds a profile
+def addProfile(username):
+    '''
+    Adds a profile to the database
+
+    Parameters:
+        username (str): The username of the profile
+    
+    Returns:
+        result (bool): If the profile is added successfully or not
+    '''
+
     try:
         result = dbCursor.execute(f"""SELECT * FROM Profile WHERE username = \"{username}\"""")
         doesExist = result.fetchall() # Get the username information
@@ -374,9 +597,20 @@ def addProfile(username): # Adds a profile
         connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
-def updateProfile(username, withHighlights = True): # Updates the profile
+def updateProfile(username, withHighlights = True):
+    '''
+    Updates the profile
+
+    Parameters:
+        username (str): The username of the profile
+        withHighlights (bool): Should the highlights be updated or not
+    
+    Returns:
+        result (bool): If the profile is updated successfully or not
+    '''
+
     try:
-        result = dbCursor.execute(f"""SELECT is_private, profile_id FROM Profile WHERE username = \"{username}\"""")
+        result = dbCursor.execute(f"""SELECT pk, profile_id FROM Profile WHERE username = \"{username}\"""")
         user_data = result.fetchone() # Get current information of user
 
         new_data = getProfileData(username) # Get new information of user
@@ -384,14 +618,17 @@ def updateProfile(username, withHighlights = True): # Updates the profile
             print("Couldn't update profile")
             return False
         
+        # Check if profile picture has changed and the last profile isn't default icon
+        profile_changed = (user_data[1] != new_data['profile_id']) and (user_data[0] != user_data[1])
+        
         if not os.path.exists(path + f"/{username}/Profiles"): # Make the Profiles folder
             os.mkdir(path + f"/{username}/Profiles")
         
-        elif user_data[1] != new_data['profile_id']: # Profile picture has changed
+        elif profile_changed: # Profile picture has changed
             if not moveProfileHistory(username, user_data[1]): # Move the past profile to history
                 print("Couldn't update profile")
                 return False
-            
+        
         isDownloaded = tryDownloading(new_data['original_profile_pic_link'], new_data['original_profile_pic']) # Try downloading the profile picture
 
         if not isDownloaded: # Couldn't download the profile picture
@@ -435,7 +672,7 @@ def updateProfile(username, withHighlights = True): # Updates the profile
         
         dbCursor.execute(instruction) # Update profile's information in database
 
-        if user_data[1] != new_data['profile_id']: # Profile picture has changed
+        if profile_changed: # Profile picture has changed
             dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({new_data['pk']},
                              {user_data[1]})""") # Add the past profile to history
         
@@ -449,7 +686,7 @@ def updateProfile(username, withHighlights = True): # Updates the profile
         return True # Profile updated successfully
         
     except:
-        if user_data[1] != new_data['profile_id']: # Profile picture has changed
+        if profile_changed: # Profile picture has changed
             try:
                 files = glob.glob(path + f"/{new_data['username']}/Profiles/Profile*") # Get the profile files
 
@@ -463,7 +700,22 @@ def updateProfile(username, withHighlights = True): # Updates the profile
         print("Couldn't update profile")
         return False # Threre was an error somewhere
 
-def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories): # Check if the story is already downloaded
+def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories):
+    '''
+    Checks if the story is already downloaded
+
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        story_pk (int): The story's pk
+        highlight_id (int): The highlight's id
+        highlight_title (str): The highlight's title
+        stories (list): The list of stories
+    
+    Returns:
+        result (bool): If the story already exists and downloaded or not
+    '''
+
     try:
         result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk} AND
                                   story_pk = {story_pk} AND highlight_id = {highlight_id}""")
@@ -531,31 +783,95 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
         connection.rollback() # Rollback the changes
         return None # Something went wrong
 
-def getStoriesData(pk, username, highlight_id): # Gets the stories (or highlights) data of the profile
+def getStoriesData(pk, highlight_id):
+    '''
+    Gets the stories (or highlights) data of the profile
+
+    Parameters:
+        pk (int): The profile's pk
+        highlight_id (int): The highlight's id
+    
+    Returns:
+        data (list): The stories data
+    '''
+
     try:
-        # Get the proper link according to being a story or highlight
+        # Base API link
+        link = "https://stealthgram.com/api/apiData"
+
+        # The payload for the request
+        payload = {
+            "body": {
+                "ids": [
+                    highlight_id
+                ],
+            },
+        }
+
+        # Set the payload for the request and label for getting the stories from the response
         if pk != highlight_id: # highlight_id == pk is for stories
-            link = f"https://anonyig.com/api/ig/highlightStories/highlight:{highlight_id}"
+            payload = {
+                "body": {
+                    "ids": [
+                        str(highlight_id)
+                    ],
+                },
+                "url": "highlight/get_stories"
+            }
+
+            label = 'highlight:' + str(highlight_id)
 
         else:
-            link = f"https://anonyig.com/api/ig/story?url=https://www.instagram.com/stories/{username}/"
+            payload = {
+                "body": {
+                    "ids": [
+                        highlight_id
+                    ],
+                },
+                "url": "user/get_stories"
+            }
 
-        response = sendRequest(link) # Get the data
+            label =  str(highlight_id)
+
+        payload = json.dumps(payload) # Convert the payload to json
+
+        response = sendRequest(link, payload) # Get the data
 
         if response is None:
             return None # Couldn't get the data
 
         data = json.loads(response.text) # Parse the data to json
-        data = data['result']
+
+        # If there is currently no story or highlight
+        if label not in data['response']['body']['reels'].keys():
+            return [] # Return an empty list
+        
+        else: # If there is a story or highlight
+            data = data['response']['body']['reels'][label]['items']
 
         return data # Return the stories data
     
     except:
         return None # Couldn't get the stories data
 
-def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories): # Gets a single story for download
+def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories):
+    '''
+    Gets a single story for download
+
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        new_story (dict): The new story data
+        highlight_id (int): The highlight's id
+        highlight_title (str): The highlight's title
+        stories (list): The list of stories
+    
+    Returns:
+        story (tuple): The story information
+    '''
+
     try:
-        story_pk = int(new_story['pk']) # The story's pk
+        story_pk = int(new_story['id'][:new_story['id'].find('_')]) # The story's pk
 
         downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
 
@@ -576,7 +892,7 @@ def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stori
 
         # Set the saving address according to being a story or highlight
         if pk != highlight_id: # highlight_id == pk is for stories
-            media_address = f"/{username}/Highlights/{highlight_title}_{highlight_id}/{story_pk}"
+            media_address = f"/{username}/Highlights/{MakeFilenameFriendly(highlight_title)}_{highlight_id}/{story_pk}"
 
         else:
             media_address = f"/{username}/Stories/{story_pk}"
@@ -586,9 +902,23 @@ def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stori
     except:
         return None # Something went wrong
 
-def getStories(pk, username, highlight_id, highlight_title): # Gets the stories or highlights of the profile for download
+def getStories(pk, username, highlight_id, highlight_title):
+    '''
+    Gets the stories or highlights of the profile for download
+
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        highlight_id (int): The highlight's id
+        highlight_title (str): The highlight's title
+    
+    Returns:
+        newStories (list): The list of new stories
+        number_of_items (int): The number of items
+    '''
+
     try:
-        data = getStoriesData(pk, username, highlight_id) # Get the stories data
+        data = getStoriesData(pk, highlight_id) # Get the stories data
 
         if data is None:
             return None, 0 # Couldn't get the stories data
@@ -616,7 +946,20 @@ def getStories(pk, username, highlight_id, highlight_title): # Gets the stories 
     except:
         return None, number_of_items # Something went wrong
 
-def downloadStories(pk, username, highlight_id, highlight_title): # Downloads the stories or highlights of the profile
+def downloadStories(pk, username, highlight_id, highlight_title):
+    '''
+    Downloads the stories or highlights of the profile
+    
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        highlight_id (int): The highlight's id
+        highlight_title (str): The highlight's title
+    
+    Returns:
+        number_of_items (int): The number of items
+    '''
+
     # TODO: Needs change for GUI implementation and multithreading
     newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories and the number of items
 
@@ -651,7 +994,19 @@ def downloadStories(pk, username, highlight_id, highlight_title): # Downloads th
     
     return number_of_items # Return the number of items
 
-def addCoverHistory(username, highlight_id, new_cover_link): # Checks the highlight cover and if it has changed then add it to the database
+def addCoverHistory(username, highlight_id, new_cover_link):
+    '''
+    Checks the highlight cover and if it has changed then add it to the database
+
+    Parameters:
+        username (str): The username of the profile
+        highlight_id (int): The highlight's id
+        new_cover_link (str): The new cover link
+    
+    Returns:
+        status (str): The status of the cover
+    '''
+
     try:
         folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
 
@@ -694,28 +1049,62 @@ def addCoverHistory(username, highlight_id, new_cover_link): # Checks the highli
     except:
         return None # Something went wrong
 
-def getHighlightsData(pk): # Get the highlights data of the profile
+def getHighlightsData(pk):
+    '''
+    Gets the highlights data of the profile
+
+    Parameters:
+        pk (int): The profile's pk
+    
+    Returns:
+        data (list): The highlights data
+    '''
+
     try:
-        response = sendRequest(f'https://anonyig.com/api/ig/highlights/{pk}') # Get highlights information
+        # Base API link
+        link = "https://stealthgram.com/api/apiData"
+
+        # The payload for the request
+        payload = json.dumps({
+            "body": {
+                "id": pk,
+            },
+            "url": "user/get_highlights"
+        })
+
+        response = sendRequest(link, payload) # Get highlights information
 
         if response is None: # Couldn't get the highlights data
             return None
         
         data = json.loads(response.text)
-        data = data['result']
+        data = data['response']['body']['data']['user']['edge_highlight_reels']['edges']
 
         return data # Return the highlights data
     
     except:
         return None # Couldn't get the highlights data
 
-def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a single highlight
+def updateSingleHighlight(pk, username, newHighlight, highlights):
+    '''
+    Updates a single highlight
+
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        newHighlight (dict): The new highlight data
+        highlights (list): The list of highlights
+    
+    Returns:
+        result (bool): If the highlight is updated successfully or not
+    '''
+
     try:
-        highlight_id = newHighlight['id']
-        highlight_id = int(highlight_id[highlight_id.index(":") + 1:])
+        highlight_id = int(newHighlight['id'])
 
         title = newHighlight['title']
-        cover_link = newHighlight['cover_media']['cropped_image_version']['url']
+        folder_name = MakeFilenameFriendly(title) # Make the title filename friendly
+        cover_link = newHighlight['cover_media_cropped_thumbnail']['url']
 
         folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
 
@@ -724,7 +1113,7 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
 
                 if (highlights[i][2] == title): # If title hasn't changed
                     if (len(folder) == 0): # And folder doesn't exist
-                        os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+                        os.mkdir(path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
 
                 else:
 
@@ -733,10 +1122,10 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                             shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
                             shutil.rmtree(i) # Remove the other folders
                         
-                        os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}") # Rename the folder
+                        os.rename(folder[0], path + f"/{username}/Highlights/{folder_name}_{highlight_id}") # Rename the folder
                         
                     else:
-                        os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+                        os.mkdir(path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
                     
                     try:
                         dbCursor.execute(f"""UPDATE Highlight SET title = \"{title}\"
@@ -752,24 +1141,24 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
                     return True # Couldn't check the cover but the highlight is updated at least
 
                 if cover_status != "Same": # If the cover file doesn't exist or it has changed
-                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover") # Try downloading highlight's cover
 
                     if isDownloaded: # If the cover is downloaded
-                        makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for cover
+                        makeThumbnail(f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for cover
 
                 del(highlights[i])
                 return True # Highlight was found and updated
         
         # If this highlight is new
         if len(folder) == 0:
-            os.mkdir(path + f"/{username}/Highlights/{title}_{highlight_id}")
+            os.mkdir(path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
 
         else:
             for i in folder[1:]:
                 shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
                 shutil.rmtree(i) # Remove the other folders
             
-            os.rename(folder[0], path + f"/{username}/Highlights/{title}_{highlight_id}")
+            os.rename(folder[0], path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
         
         try:
             dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, \"{title}\", 0)""") # Add it to database
@@ -784,17 +1173,29 @@ def updateSingleHighlight(pk, username, newHighlight, highlights): # Updates a s
             return True # Couldn't check the cover but the highlight is added at least
 
         if cover_status != "Same": # If the cover file doesn't exist or it has changed
-            isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{title}_{highlight_id}/Cover") # Try downloading highlight's cover
+            isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover") # Try downloading highlight's cover
 
             if isDownloaded: # If the cover is downloaded
-                makeThumbnail(f"/{username}/Highlights/{title}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for the cover
+                makeThumbnail(f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for the cover
         
         return True # Highlight was added
 
     except:
         return False # There was an error somewhere
 
-def updateHighlights(pk, username): # Updates the highlights of the profile
+def updateHighlights(pk, username):
+    '''
+    Updates the highlights of the profile
+
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+    
+    Returns:
+        data (list): The highlights data
+        update_states (list): The list of update states
+    '''
+
     try:
         data = getHighlightsData(pk) # Get the highlights data
         update_states = [] # Stores the update states of highlights
@@ -814,7 +1215,7 @@ def updateHighlights(pk, username): # Updates the highlights of the profile
         highlights = result.fetchall() # Get the list of highlights from database
 
         for newHighlight in data:
-            update_states.append(updateSingleHighlight(pk, username, newHighlight, highlights)) # Update this highlight
+            update_states.append(updateSingleHighlight(pk, username, newHighlight['node'], highlights)) # Update this highlight
 
         return data, update_states # Return the highlights data and update states
 
@@ -822,7 +1223,17 @@ def updateHighlights(pk, username): # Updates the highlights of the profile
         print("Couldn't get the highlights!")
         return data, update_states # There was an error somewhere but return the highlights data and update states anyway
 
-def downloadSingleHighlightStories(username, highlight_id, highlight_title, direct_call = True): # Downloads the stories of a single highlight
+def downloadSingleHighlightStories(username, highlight_id, highlight_title, direct_call = True):
+    '''
+    Downloads the stories of a single highlight
+
+    Parameters:
+        username (str): The username of the profile
+        highlight_id (int): The highlight's id
+        highlight_title (str): The highlight's title
+        direct_call (bool): If the function is called directly or not
+    '''
+
     try:
         if direct_call: # If the function is called directly
             updated = updateProfile(username, False) # Update the profile
@@ -853,7 +1264,9 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
                 return
             
             for highlight in data:
-                if highlight['id'] == f"highlight:{highlight_id}":
+                highlight = highlight['node']
+
+                if highlight['id'] == highlight_id: # If the highlight_id is found in the data
                     new_data = highlight
                     highlight_title = new_data['title']
                     break
@@ -894,7 +1307,15 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
         print("Couldn't download the highlight!")
         return # There was an error somewhere
 
-def downloadHighlightsStories(username, direct_call = True): # Downloads the stories of all highlights
+def downloadHighlightsStories(username, direct_call = True):
+    '''
+    Downloads the stories of all highlights
+
+    Parameters:
+        username (str): The username of the profile
+        direct_call (bool): If the function is called directly or not
+    '''
+
     try:
         if direct_call: # If the function is called directly
             updated = updateProfile(username, False) # Update the profile
@@ -917,12 +1338,11 @@ def downloadHighlightsStories(username, direct_call = True): # Downloads the sto
         
         for i in range(len(update_states)):
             if update_states[i]: # If the highlight was updated
-                highlight_id = data[i]['id']
-                highlight_id = int(highlight_id[highlight_id.index(":") + 1:]) # Get the highlight_id
+                highlight_id = int(data[i]['node']['id']) # Get the highlight_id
                 
-                print(f"Downloading {data[i]['title']}...") # Show the title of the highlight
+                print(f"Downloading {data[i]['node']['title']}...") # Show the title of the highlight
 
-                downloadSingleHighlightStories(username, highlight_id, data[i]['title'], False) # Download the stories of the highlight
+                downloadSingleHighlightStories(username, highlight_id, data[i]['node']['title'], False) # Download the stories of the highlight
 
     except:
         print("There was an error!")
