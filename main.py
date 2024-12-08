@@ -16,11 +16,12 @@ INVALID_CHARACTERS = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] # Invalid ch
 
 path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
 
-headers = { # Headers for session
+HEADERS = { # Headers for session
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 }
 
 profile_data = None # Global variable for profile data
+stealthgram_tokens = None # Global variable for stealthgram tokens
 
 def initialize():
     '''
@@ -199,13 +200,14 @@ def MakeFilenameFriendly(text):
     
     return text # Return the filename friendly text
 
-def sendRequest(url, payload=None, retries = 3, timeout = 60):
+def sendRequest(url, payload=None, headers=None, retries=3, timeout=60):
     '''
     Sends a request to the url and returns the response
 
     Parameters:
         url (str): The url to send the request
         payload (str): The payload for the request
+        headers (dict): The headers for the request
         retries (int): The number of retries for the request
         timeout (int): The timeout for the request
     
@@ -214,7 +216,7 @@ def sendRequest(url, payload=None, retries = 3, timeout = 60):
     '''
 
     try:
-        response = requests.request("POST", url, headers=headers, data=payload, timeout=timeout) # Send the request
+        response = requests.request("POST", url, data=payload, headers=headers if headers is not None else HEADERS, timeout=timeout) # Send the request
         
         if response.status_code == 200:
             return response # Return the response
@@ -222,7 +224,20 @@ def sendRequest(url, payload=None, retries = 3, timeout = 60):
         elif (response.status_code) == 429 and (retries > 0): # Too many requests
             sleep(30) # Sleep for 30 seconds
 
-            return sendRequest(url, payload, retries - 1) # Try again
+            return sendRequest(url, payload, headers, retries - 1) # Try again
+        
+        elif (response.status_code) == 500: # Internal server error
+            if ('stealthgram' in url) and ('EXPIRED' in response.text): # If the tokens are expired
+                if not zd.loop().run_until_complete(getStealthgramTokens()): # Get new tokens
+                    return None # Couldn't get new tokens
+                
+                # Set the headers for the request
+                headers = {
+                    'Cookie': f"access-token={stealthgram_tokens['access-token']}; refresh-token={stealthgram_tokens['refresh-token']};",
+                }
+                headers.update(HEADERS) # Add the default headers to the request
+
+                return sendRequest(url, payload, headers, retries - 1) # Try again with the new tokens
         
         else:
             return None # Couldn't get the data
@@ -244,7 +259,7 @@ def downloadLink(link, address):
 
     # TODO: Needs change for GUI implementation and multithreading
     try:
-        media = requests.get(link, headers=headers, timeout=60, allow_redirects=True) # Get the media from the link
+        media = requests.get(link, headers=HEADERS, timeout=60, allow_redirects=True) # Get the media from the link
 
         extension = guess_extension(media.headers['content-type'].partition(';')[0].strip()) # Find the extension from the headers
         if extension is None: # If couldn't find from headers then find from the link
@@ -380,7 +395,7 @@ async def ProfileDataAPI(username):
         browser = await zd.start(browser_args=["--headless=new", '--disable-gpu'])
 
         # Create a new page instance
-        page = await browser.get('https://anonyig.com/en')
+        page = await browser.get('https://anonyig.com/en/')
 
         # Add a handler for the ResponseReceived event
         page.add_handler(zd.cdp.network.ResponseReceived, response_handler)
@@ -783,6 +798,150 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
         connection.rollback() # Rollback the changes
         return None # Something went wrong
 
+async def getStealthgramTokens():
+    '''
+    Gets the stealthgram tokens
+
+    Returns:
+        result (bool): If the tokens are updated successfully or not
+    '''
+
+    try:
+        # Create a new browser instance in headless mode
+        browser = await zd.start(browser_args=["--headless=new", '--disable-gpu'])
+
+        # Create a new page instance
+        page = await browser.get('https://stealthgram.com/profile/test')
+
+        sleep(3) # Wait for the data to load
+
+        # Get the cookies
+        cookies = await page.send(cdp_obj=zd.cdp.network.get_cookies(urls=[f'https://stealthgram.com/profile/test']))
+
+        # Get the tokens from the cookies
+        global stealthgram_tokens
+        stealthgram_tokens = {}
+
+        for cookie in cookies:
+            if cookie.name == 'access-token':
+                stealthgram_tokens['access-token'] = cookie.value
+            
+            elif cookie.name == 'refresh-token':
+                stealthgram_tokens['refresh-token'] = cookie.value
+        
+        # Close the page
+        await page.close()
+
+        # Stop the browser
+        await browser.stop()
+
+        return True # Tokens updated successfully
+    
+    except:
+        # Close the page
+        await page.close()
+
+        # Stop the browser
+        await browser.stop()
+
+        return False # Couldn't update the tokens
+
+def updateStealthgramTokens(headers):
+    '''
+    Updates the stealthgram tokens
+
+    Parameters:
+        headers (Headers): The headers of the request
+    
+    Returns:
+        result (bool): If the tokens are updated successfully or not
+    '''
+
+    try:
+        set_cookies = headers.get('set-cookie').split(' ') # Get the set-cookie's from the headers
+        
+        global stealthgram_tokens
+        for cookie in set_cookies:
+            if 'access-token' in cookie:
+                stealthgram_tokens['access-token'] = cookie[cookie.index('=') + 1:cookie.index(';')]
+            
+            elif 'refresh-token' in cookie:
+                stealthgram_tokens['refresh-token'] = cookie[cookie.index('=') + 1:cookie.index(';')]
+    
+        return True # Tokens updated successfully
+    
+    except:
+        return False # Couldn't update the tokens
+
+def callStealthgramAPI(pk, highlight_id, is_highlight=False):
+    '''
+    Calls the stealthgram API to get the data
+
+    Parameters:
+        pk (int): The profile's pk
+        highlight_id (int): The highlight's id
+        is_highlight (bool): Is the data for highlight or not
+    
+    Returns:
+        response (requests.Response): The response of the request
+    '''
+    
+    try:
+        # Base API link
+        link = "https://stealthgram.com/api/apiData"
+
+        # Set the payload for the request
+        if is_highlight: # If the data is for highlight
+            payload = json.dumps({
+                "body": {
+                    "id": str(pk),
+                },
+                "url": "user/get_highlights"
+            })
+        
+        else:
+            if pk != highlight_id: # highlight_id == pk is for stories
+                payload = json.dumps({
+                    "body": {
+                        "ids": [
+                            str(highlight_id)
+                        ],
+                    },
+                    "url": "highlight/get_stories"
+                })
+
+            else:
+                payload = json.dumps({
+                    "body": {
+                        "ids": [
+                            highlight_id
+                        ],
+                    },
+                    "url": "user/get_stories"
+                })
+        
+        # Check if stealthgram tokens are available
+        global stealthgram_tokens
+        if stealthgram_tokens is None:
+            if not zd.loop().run_until_complete(getStealthgramTokens()):
+                return None # Couldn't update the tokens
+        
+        # Set the headers for the request
+        headers = {
+            'Cookie': f"access-token={stealthgram_tokens['access-token']}; refresh-token={stealthgram_tokens['refresh-token']};",
+        }
+        headers.update(HEADERS) # Add the default headers to the request
+
+        response = sendRequest(link, payload, headers) # Get the data
+
+        updateStealthgramTokens(response.headers) # Update the stealthgram tokens
+
+        return response # Return the response
+    
+    except:
+        return None # There was an error
+    
+
 def getStoriesData(pk, highlight_id):
     '''
     Gets the stories (or highlights) data of the profile
@@ -796,51 +955,15 @@ def getStoriesData(pk, highlight_id):
     '''
 
     try:
-        # Base API link
-        link = "https://stealthgram.com/api/apiData"
-
-        # The payload for the request
-        payload = {
-            "body": {
-                "ids": [
-                    highlight_id
-                ],
-            },
-        }
-
-        # Set the payload for the request and label for getting the stories from the response
-        if pk != highlight_id: # highlight_id == pk is for stories
-            payload = {
-                "body": {
-                    "ids": [
-                        str(highlight_id)
-                    ],
-                },
-                "url": "highlight/get_stories"
-            }
-
-            label = 'highlight:' + str(highlight_id)
-
-        else:
-            payload = {
-                "body": {
-                    "ids": [
-                        highlight_id
-                    ],
-                },
-                "url": "user/get_stories"
-            }
-
-            label =  str(highlight_id)
-
-        payload = json.dumps(payload) # Convert the payload to json
-
-        response = sendRequest(link, payload) # Get the data
+        response = callStealthgramAPI(pk, highlight_id) # Get the stories data
 
         if response is None:
             return None # Couldn't get the data
 
         data = json.loads(response.text) # Parse the data to json
+
+        # Set the label for getting the stories from the response
+        label = ('highlight:' if pk != highlight_id else '') + str(highlight_id)
 
         # If there is currently no story or highlight
         if label not in data['response']['body']['reels'].keys():
@@ -1061,18 +1184,7 @@ def getHighlightsData(pk):
     '''
 
     try:
-        # Base API link
-        link = "https://stealthgram.com/api/apiData"
-
-        # The payload for the request
-        payload = json.dumps({
-            "body": {
-                "id": pk,
-            },
-            "url": "user/get_highlights"
-        })
-
-        response = sendRequest(link, payload) # Get highlights information
+        response = callStealthgramAPI(pk, None, True) # Get the highlights data
 
         if response is None: # Couldn't get the highlights data
             return None
