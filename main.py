@@ -14,7 +14,7 @@ import json
 
 INVALID_CHARACTERS = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] # Invalid characters for file names
 
-path = os.path.dirname(os.path.abspath(__file__)) + "/storage" # Base path
+path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage") # Base path
 
 HEADERS = { # Headers for session
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -37,10 +37,10 @@ def initialize():
             os.mkdir(path)
         
         initializeTables = False
-        if not os.path.exists(path + "/data.db"):
+        if not os.path.exists(os.path.join(path, "data.db")):
             initializeTables = True
 
-        connection = sqlite3.connect(path + "/data.db")
+        connection = sqlite3.connect(os.path.join(path, "data.db"))
         dbCursor = connection.cursor()
 
         dbCursor.execute("PRAGMA foreign_keys = ON") # Enabling foreign key constraints
@@ -50,7 +50,7 @@ def initialize():
                 makeTables(dbCursor) # If tables are not created, create them
             
             except:
-                os.remove(path + "/data.db") # If there was an error then remove the database
+                os.remove(os.path.join(path, "data.db")) # If there was an error then remove the database
                 return None, None
             
         return connection, dbCursor
@@ -121,9 +121,11 @@ def makeThumbnail(address, size, is_video = False, circle = False):
     '''
 
     try:
-        file = glob.glob(path + address + ".*")
+        file = glob.glob(os.path.join(path, address) + ".*")
+        
         if len(file) != 1:
             return False # Couldn't find the image
+        
         file = file[0]
 
         if is_video: # If the media is video
@@ -152,9 +154,10 @@ def makeThumbnail(address, size, is_video = False, circle = False):
         if circle: # If the thumbnail should be a circle
             circleCrop(resized_image) # Cropping the thumbnail to a circle
 
-        file = file.rsplit('/', 1) # Split the path to get the filename
-        filename = file[1].replace("_temp", "") # Remove the "_temp" (if any) from the filename
-        file = file[0] + "/" + filename # Get the new path for the thumbnail
+        file_name = os.path.basename(file) # Get the filename
+        file = file.replace(file_name, "") # Get the new path for the thumbnail
+        file_name = file_name.replace("_temp", "") # Remove the "_temp" (if any) from the filename
+        file += file_name # Add the filename to the path
 
         resized_image.save(file[:file.rindex('.')] + "_thumbnail.png") # Saving thumbnail at the same path
         
@@ -184,7 +187,7 @@ def guessType(file):
         
     return 'None' # Couldn't guess or it wasn't image or video
 
-def MakeFilenameFriendly(text):
+def makeFilenameFriendly(text):
     '''
     Makes the text filename friendly
 
@@ -200,12 +203,37 @@ def MakeFilenameFriendly(text):
     
     return text # Return the filename friendly text
 
-def sendRequest(url, payload=None, headers=None, retries=3, timeout=60):
+def findFolderName(pk):
+    '''
+    Finds the folder name for the profile
+
+    Parameters:
+        pk (int): The pk of the profile
+    
+    Returns:
+        folder_name (str): The folder name for the profile
+    '''
+
+    try:
+        folder_name = glob.glob(os.path.join(path, f"*@{pk}")) # Get the folder name for the profile
+
+        if len(folder_name) == 0: # The folder doesn't exist
+            return None
+        
+        folder_name = os.path.basename(folder_name[0]) # Get the folder name
+
+        return folder_name # Return the folder name
+    
+    except:
+        return None # Couldn't find the folder name
+
+def sendRequest(url, method='POST', payload=None, headers=None, retries=3, timeout=60):
     '''
     Sends a request to the url and returns the response
 
     Parameters:
         url (str): The url to send the request
+        method (str): The method for the request
         payload (str): The payload for the request
         headers (dict): The headers for the request
         retries (int): The number of retries for the request
@@ -216,7 +244,7 @@ def sendRequest(url, payload=None, headers=None, retries=3, timeout=60):
     '''
 
     try:
-        response = requests.request("POST", url, data=payload, headers=headers if headers is not None else HEADERS, timeout=timeout) # Send the request
+        response = requests.request(method=method, url=url, data=payload, headers=headers if headers is not None else HEADERS, timeout=timeout) # Send the request
         
         if response.status_code == 200:
             return response # Return the response
@@ -224,7 +252,7 @@ def sendRequest(url, payload=None, headers=None, retries=3, timeout=60):
         elif (response.status_code) == 429 and (retries > 0): # Too many requests
             sleep(30) # Sleep for 30 seconds
 
-            return sendRequest(url, payload, headers, retries - 1) # Try again
+            return sendRequest(url=url, method=method, payload=payload, headers=headers, retries=retries - 1) # Try again
         
         elif (response.status_code) == 500: # Internal server error
             if ('stealthgram' in url) and ('EXPIRED' in response.text): # If the tokens are expired
@@ -237,7 +265,7 @@ def sendRequest(url, payload=None, headers=None, retries=3, timeout=60):
                 }
                 headers.update(HEADERS) # Add the default headers to the request
 
-                return sendRequest(url, payload, headers, retries - 1) # Try again with the new tokens
+                return sendRequest(url=url, method=method, payload=payload, headers=headers, retries=retries - 1) # Try again with the new tokens
         
         else:
             return None # Couldn't get the data
@@ -269,7 +297,7 @@ def downloadLink(link, address):
         if extension in [None, '', '.', '.txt', '.html']: # If couldn't find the extension or it's a text or html file (Probably an error)
             return False # Couldn't download the link
         
-        open(path + address + extension, 'wb').write(media.content) # saving the file
+        open(os.path.join(path, address) + extension, 'wb').write(media.content) # saving the file
         return True
     
     except:
@@ -331,12 +359,12 @@ def listProfiles():
     except:
         print("Couldn't list the profiles!") # There was an error somewhere
 
-def moveProfileHistory(username, profile_id):
+def moveProfileHistory(pk, profile_id):
     '''
     Moves the past profile files (if any) to History folder
 
     Parameters:
-        username (str): The username of the profile
+        pk (int): The pk of the profile
         profile_id (int): The id of the profile
     
     Returns:
@@ -344,17 +372,22 @@ def moveProfileHistory(username, profile_id):
     '''
 
     try:
-        files = glob.glob(path + f"/{username}/Profiles/Profile*.*") # Get the profile files
+        folder_name = findFolderName(pk) # Get the folder name for the profile
+
+        if folder_name is None:
+            return True # No profile folder to move
+        
+        files = glob.glob(os.path.join(path, f"{folder_name}", "Profiles", "Profile*.*")) # Get the profile files
 
         if len(files) == 0:
             return True # No profile files to move
         
-        if not os.path.exists(path + f"/{username}/Profiles/History"): # Make the History folder
-            os.mkdir(path + f"/{username}/Profiles/History")
+        if not os.path.exists(os.path.join(path, f"{folder_name}", "Profiles" "History")): # Make the History folder
+            os.mkdir(os.path.join(path, f"{folder_name}", "Profiles", "History"))
 
         for file in files:
             newName = file.rsplit("Profile", 1)
-            newName = newName[0] + f"/History/{profile_id}" + newName[1] # Change the name from Profile(_thumbnail) to {profile_id}
+            newName = os.path.join(newName[0], "History", f"{profile_id}") + newName[1] # Change the name from Profile(_thumbnail) to {profile_id}
 
             shutil.move(file, newName) # Move the file to the History folder
 
@@ -509,12 +542,80 @@ def getProfileData(username):
 
         profile['profile_id'] = profile_id
         profile['original_profile_pic_link'] = data["hd_profile_pic_url_info"]["url"]
-        profile['original_profile_pic'] = f"/{username}/Profiles/Profile"
+        profile['original_profile_pic'] = os.path.join(f"{username}@{profile['pk']}", "Profiles", "Profile")
 
         return profile # Return profile's data
 
     except:
         return None # Couldn't get the data
+
+def getPKUsername(pk):
+    '''
+    Gets the username of the given pk
+
+    Parameters:
+        pk (int): The pk of the profile
+    
+    Returns:
+        username (str): The username of the profile
+    '''
+
+    try:
+        url = f'https://i.instagram.com/api/v1/users/{pk}/info/' # The url to get the profile's data
+
+        headers = {
+            'User-Agent': 'Instagram 85.0.0.21.100 Android (23/6.0.1; 538dpi; 1440x2560; LGE; LG-E425f; vee3e; en_US)',
+        }
+
+        response = sendRequest(url, headers=headers).json() # Get the profile's data
+
+        if 'user' in response.keys(): # If the data is found
+            return response['user']['username']
+        
+        return None # Couldn't get the username
+    
+    except:
+        return None # Couldn't get the data
+
+def changeProfileUsername(pk, old_username, new_username):
+    '''
+    Changes the profile's username
+
+    Parameters:
+        pk (int): The pk of the profile
+        old_username (str): The old username of the profile
+        new_username (str): The new username of the profile
+    
+    Returns:
+        result (bool): If the username is changed successfully or not
+    '''
+
+    try:
+        folder_name = findFolderName(pk) # Get the folder name for the profile
+
+        if folder_name is not None:
+            os.rename(os.path.join(path, folder_name), os.path.join(path, f"{new_username}@{pk}")) # Change the folder name
+    
+    except:
+        return False # Couldn't change the folder name
+
+    try:
+        dbCursor.execute(f"""UPDATE Profile SET username = \"{new_username}\" WHERE username = \"{old_username}\"""") # Change the username in the database
+        connection.commit() # Commit the changes
+
+        return True # Username changed successfully
+    
+    except:
+        connection.rollback() # Rollback the changes
+
+        if folder_name is not None: # If the folder name was changed
+            try:
+                os.rename(os.path.join(path, f"{new_username}@{pk}"), os.path.join(path, folder_name))
+            
+            except:
+                pass # Couldn't change the folder name back
+
+        return False # Couldn't change the username
 
 def addProfile(username):
     '''
@@ -528,26 +629,36 @@ def addProfile(username):
     '''
 
     try:
-        result = dbCursor.execute(f"""SELECT * FROM Profile WHERE username = \"{username}\"""")
-        doesExist = result.fetchall() # Get the username information
-
-        if len(doesExist) != 0:
-            print("This account is already added!")
-            return # Profile already exist, don't need to continue
-        
         data = getProfileData(username) # Get the profile's data
         if data is None:
             print("There was an error!")
             return # Couldn't get the data
         
-        if not os.path.exists(path + f"/{data['username']}"): # Make the profile folder
-            os.mkdir(path + f"/{data['username']}")
+        result = dbCursor.execute(f"""SELECT pk, username FROM Profile WHERE pk = {data['pk']}""")
+        doesExist = result.fetchall() # Get the pk information
+
+        if len(doesExist) != 0: # If the pk is already added
+            if doesExist[0][1] == data['username']: # If the username is the same
+                print("This account is already added!")
+                return # Profile already exist, don't need to continue
+            
+            if not changeProfileUsername(data['pk'], doesExist[0][1], data['username']):
+                print("There was an error!")
+                return # Couldn't change the username
+            
+            if not updateProfile(username=data['username'], profile_data=data): # Update the profile
+                print("There was an error!")
+
+            return # Username changed successfully and profile updated
         
-        if not os.path.exists(path + f"/{data['username']}/Profiles"): # Make the Profiles folder
-            os.mkdir(path + f"/{data['username']}/Profiles")
+        if not os.path.exists(os.path.join(path, f"{data['username']}@{data['pk']}")): # Make the profile folder
+            os.mkdir(os.path.join(path, f"{data['username']}@{data['pk']}"))
+        
+        if not os.path.exists(os.path.join(path, f"{data['username']}@{data['pk']}", "Profiles")): # Make the Profiles folder
+            os.mkdir(os.path.join(path, f"{data['username']}@{data['pk']}", "Profiles"))
         
         # Else if Profiles folder exist then move the past profile files (if any) to History folder
-        elif not moveProfileHistory(data['username'], int(time())):
+        elif not moveProfileHistory(data['pk'], int(time())):
             print("Couldn't Move the past profile to history!")
             return
     
@@ -595,13 +706,13 @@ def addProfile(username):
         connection.commit() # Commit the changes
         
         if not data['is_private']:
-            updateHighlights(data['pk'], data['username']) # If the account isn't private then update it's highlights
+            updateHighlights(data['pk']) # If the account isn't private then update it's highlights
 
         listProfiles() # Update the screen
 
     except:
         try:
-            files = glob.glob(path + f"/{data['username']}/Profiles/Profile*") # Get the profile files
+            files = glob.glob(os.path.join(path, f"{data['username']}@{data['pk']}", "Profiles", "Profile*")) # Get the profile files
 
             for file in files:
                 os.remove(file) # Remove the profile files
@@ -612,13 +723,14 @@ def addProfile(username):
         connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
-def updateProfile(username, withHighlights = True):
+def updateProfile(username, withHighlights = True, profile_data = None):
     '''
     Updates the profile
 
     Parameters:
         username (str): The username of the profile
         withHighlights (bool): Should the highlights be updated or not
+        profile_data (dict): The profile's data (if already fetched)
     
     Returns:
         result (bool): If the profile is updated successfully or not
@@ -628,19 +740,39 @@ def updateProfile(username, withHighlights = True):
         result = dbCursor.execute(f"""SELECT pk, profile_id FROM Profile WHERE username = \"{username}\"""")
         user_data = result.fetchone() # Get current information of user
 
-        new_data = getProfileData(username) # Get new information of user
-        if new_data is None:
-            print("Couldn't update profile")
-            return False
+        if profile_data is None: # If the profile's data is not already fetched (function not called from addProfile)
+            new_username = getPKUsername(user_data[0]) # Get the username of the profile
+
+            if new_username is None:
+                print("Couldn't update profile")
+                return False
+            
+            if new_username != username: # If the username has changed
+                if not changeProfileUsername(user_data[0], username, new_username):
+                    print("Couldn't update profile")
+                    return False
+                
+                username = new_username # Change the username to the new username
+
+            new_data = getProfileData(username) # Get new information of user
+            if new_data is None:
+                print("Couldn't update profile")
+                return False
+        
+        else:
+            new_data = profile_data # Use the profile's data passed as argument
         
         # Check if profile picture has changed and the last profile isn't default icon
         profile_changed = (user_data[1] != new_data['profile_id']) and (user_data[0] != user_data[1])
+
+        if not os.path.exists(os.path.join(path, f"{new_data['username']}@{new_data['pk']}")): # Make the profile folder
+            os.mkdir(os.path.join(path, f"{new_data['username']}@{new_data['pk']}"))
         
-        if not os.path.exists(path + f"/{username}/Profiles"): # Make the Profiles folder
-            os.mkdir(path + f"/{username}/Profiles")
+        if not os.path.exists(os.path.join(path, f"{new_data['username']}@{new_data['pk']}", "Profiles")): # Make the Profiles folder
+            os.mkdir(os.path.join(path, f"{new_data['username']}@{new_data['pk']}", "Profiles"))
         
         elif profile_changed: # Profile picture has changed
-            if not moveProfileHistory(username, user_data[1]): # Move the past profile to history
+            if not moveProfileHistory(user_data[0], user_data[1]): # Move the past profile to history
                 print("Couldn't update profile")
                 return False
         
@@ -694,7 +826,7 @@ def updateProfile(username, withHighlights = True):
         connection.commit() # Commit the changes
 
         if withHighlights and (not new_data['is_private']):
-            updateHighlights(new_data['pk'], new_data['username']) # If the account isn't private then update it's highlights
+            updateHighlights(new_data['pk']) # If the account isn't private then update it's highlights
 
         listProfiles() # Update the screen
 
@@ -703,7 +835,7 @@ def updateProfile(username, withHighlights = True):
     except:
         if profile_changed: # Profile picture has changed
             try:
-                files = glob.glob(path + f"/{new_data['username']}/Profiles/Profile*") # Get the profile files
+                files = glob.glob(os.path.join(path, f"{new_data['username']@new_data['pk']}", "Profiles", "Profile*")) # Get the profile files
 
                 for file in files:
                     os.remove(file) # Remove the profile files
@@ -715,13 +847,12 @@ def updateProfile(username, withHighlights = True):
         print("Couldn't update profile")
         return False # Threre was an error somewhere
 
-def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories):
+def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
     '''
     Checks if the story is already downloaded
 
     Parameters:
         pk (int): The profile's pk
-        username (str): The username of the profile
         story_pk (int): The story's pk
         highlight_id (int): The highlight's id
         highlight_title (str): The highlight's title
@@ -741,19 +872,23 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
         
         isHighlight = pk != highlight_id # highlight_id = pk is for stories
 
+        folder_name = findFolderName(pk) # Get the folder name for the profile
+
         for i in range(len(stories)):
             if stories[i][1] == story_pk: # Story already downloaded
                 
                 if stories[i][2] == pk: # It was a story before and now it's a highlight
                     try:
-                        files = glob.glob(path + f"/{username}/Stories/{story_pk}*")
+                        files = glob.glob(os.path.join(path, f"{folder_name}", "Stories", f"{story_pk}*"))
                         if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
                             for file in files:
                                 if '/' in file:
                                     index = file.rindex("/")
+                                
                                 else:
                                     index = file.rindex("\\")
-                                shutil.copy(file, f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                                
+                                shutil.copy(file, os.path.join(path, f"{folder_name}", "Highlights", f"{highlight_title}_{highlight_id}", f"{file[index + 1:]}"))
 
                             dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                 {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
@@ -766,20 +901,22 @@ def checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title,
 
                 else: # It's from another highlight
                     try:
-                        folders = glob.glob(path + f"/{username}/Highlights/*_{stories[i][2]}")
+                        folders = glob.glob(os.path.join(path, f"{folder_name}", "Highlights", f"*_{stories[i][2]}"))
                         if len(folders) == 1:
-                            files = glob.glob(folders[0] + f"/{story_pk}*")
+                            files = glob.glob(os.path.join(folders[0], f"{story_pk}*"))
                             if len(files) == 2: # Check if the files exist, if yes then copy them to the highlight folder
                                 for file in files:
                                     if '/' in file:
                                             index = file.rindex("/")
+                                    
                                     else:
                                         index = file.rindex("\\")
                                     
                                     if isHighlight:
-                                        shutil.copy(file, path + f"/{username}/Highlights/{highlight_title}_{highlight_id}/{file[index + 1:]}")
+                                        shutil.copy(file, os.path.join(path, f"{folder_name}", "Highlights", f"{highlight_title}_{highlight_id}", f"{file[index + 1:]}"))
+                                    
                                     else:
-                                        shutil.copy(file, path + f"/{username}/Stories/{file[index + 1:]}")
+                                        shutil.copy(file, os.path.join(path, f"{folder_name}", "Stories", f"{file[index + 1:]}"))
                                 
                                 dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
                                                     {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
@@ -813,7 +950,10 @@ async def getStealthgramTokens():
         # Create a new page instance
         page = await browser.get('https://stealthgram.com/profile/test')
 
-        sleep(3) # Wait for the data to load
+        sleep(5) # Wait for the data to load
+
+        #TODO
+        sleep(25) # Wait for Cloudflare to verify the browser
 
         # Get the cookies
         cookies = await page.send(cdp_obj=zd.cdp.network.get_cookies(urls=[f'https://stealthgram.com/profile/test']))
@@ -834,6 +974,11 @@ async def getStealthgramTokens():
 
         # Stop the browser
         await browser.stop()
+
+        # Check if the tokens are available
+        if 'access-token' not in stealthgram_tokens.keys() or 'refresh-token' not in stealthgram_tokens.keys():
+            stealthgram_tokens = None # Tokens are not available
+            return False # Couldn't get the tokens
 
         return True # Tokens updated successfully
     
@@ -932,7 +1077,7 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
         }
         headers.update(HEADERS) # Add the default headers to the request
 
-        response = sendRequest(link, payload, headers) # Get the data
+        response = sendRequest(url=link, payload=payload, headers=headers) # Get the data
 
         updateStealthgramTokens(response.headers) # Update the stealthgram tokens
 
@@ -977,13 +1122,12 @@ def getStoriesData(pk, highlight_id):
     except:
         return None # Couldn't get the stories data
 
-def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories):
+def getSingleStory(pk, new_story, highlight_id, highlight_title, stories):
     '''
     Gets a single story for download
 
     Parameters:
         pk (int): The profile's pk
-        username (str): The username of the profile
         new_story (dict): The new story data
         highlight_id (int): The highlight's id
         highlight_title (str): The highlight's title
@@ -994,9 +1138,14 @@ def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stori
     '''
 
     try:
+        folder_name = findFolderName(pk) # Get the folder name for the profile
+
+        if folder_name is None:
+            return None # Couldn't find the folder name
+
         story_pk = int(new_story['id'][:new_story['id'].find('_')]) # The story's pk
 
-        downloaded = checkDuplicateStories(pk, username, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
+        downloaded = checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
 
         if downloaded or (downloaded is None):
             return None # It was (found and copied) or (couldn't check and it may be duplicate) so skip this one
@@ -1007,31 +1156,30 @@ def getSingleStory(pk, username, new_story, highlight_id, highlight_title, stori
         is_video = False # Is the story is video
 
         if 'video_versions' in new_story.keys(): # If the story is video
-            media_link = new_story['video_versions'][0]['url']
+            media_link = new_story['video_versions'][0]['url'].replace("se=7&", "") # Get the video link (better quality)
             is_video = True
 
         if media_link is None: # If story isn't video then get the best picture
-            media_link = new_story['image_versions2']['candidates'][0]['url']
+            media_link = new_story['image_versions2']['candidates'][0]['url'].replace("se=7&", "") # Get the picture link (better quality)
 
         # Set the saving address according to being a story or highlight
         if pk != highlight_id: # highlight_id == pk is for stories
-            media_address = f"/{username}/Highlights/{MakeFilenameFriendly(highlight_title)}_{highlight_id}/{story_pk}"
+            media_address = os.path.join(f"{folder_name}", "Highlights", f"{makeFilenameFriendly(highlight_title)}_{highlight_id}", f"{story_pk}")
 
         else:
-            media_address = f"/{username}/Stories/{story_pk}"
+            media_address = os.path.join(f"{folder_name}", "Stories", f"{story_pk}")
         
         return (pk, story_pk, highlight_id, timestamp, media_link, media_address, is_video) # Return the story information
     
     except:
         return None # Something went wrong
 
-def getStories(pk, username, highlight_id, highlight_title):
+def getStories(pk, highlight_id, highlight_title):
     '''
     Gets the stories or highlights of the profile for download
 
     Parameters:
         pk (int): The profile's pk
-        username (str): The username of the profile
         highlight_id (int): The highlight's id
         highlight_title (str): The highlight's title
     
@@ -1057,7 +1205,7 @@ def getStories(pk, username, highlight_id, highlight_title):
         newStories = [] # List of new stories that need downloading
         
         for new_story in data:
-            new_story_data = getSingleStory(pk, username, new_story, highlight_id, highlight_title, stories) # Get the story information
+            new_story_data = getSingleStory(pk, new_story, highlight_id, highlight_title, stories) # Get the story information
 
             if new_story_data is None:
                 continue # Couldn't get the story information so skip this one
@@ -1069,13 +1217,12 @@ def getStories(pk, username, highlight_id, highlight_title):
     except:
         return None, number_of_items # Something went wrong
 
-def downloadStories(pk, username, highlight_id, highlight_title):
+def downloadStories(pk, highlight_id, highlight_title):
     '''
     Downloads the stories or highlights of the profile
     
     Parameters:
         pk (int): The profile's pk
-        username (str): The username of the profile
         highlight_id (int): The highlight's id
         highlight_title (str): The highlight's title
     
@@ -1084,7 +1231,7 @@ def downloadStories(pk, username, highlight_id, highlight_title):
     '''
 
     # TODO: Needs change for GUI implementation and multithreading
-    newstories, number_of_items = getStories(pk, username, highlight_id, highlight_title) # Get the list of new stories and the number of items
+    newstories, number_of_items = getStories(pk, highlight_id, highlight_title) # Get the list of new stories and the number of items
 
     if newstories is None:
         print("There was an error!")
@@ -1117,12 +1264,12 @@ def downloadStories(pk, username, highlight_id, highlight_title):
     
     return number_of_items # Return the number of items
 
-def addCoverHistory(username, highlight_id, new_cover_link):
+def addCoverHistory(pk, highlight_id, new_cover_link):
     '''
     Checks the highlight cover and if it has changed then add it to the database
 
     Parameters:
-        username (str): The username of the profile
+        pk (int): The profile's pk
         highlight_id (int): The highlight's id
         new_cover_link (str): The new cover link
     
@@ -1131,12 +1278,17 @@ def addCoverHistory(username, highlight_id, new_cover_link):
     '''
 
     try:
-        folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
+        folder_name = findFolderName(pk) # Get the folder name for the profile
+
+        if folder_name is None:
+            return None # Couldn't find the folder name
+
+        folder = glob.glob(os.path.join(path, f"{folder_name}", "Highlights", f"*_{highlight_id}")) # Check if the highlight folder already exists
 
         if len(folder) == 0: # If the folder doesn't exist
             return "No File" # There is no folder so there is nothing to do
         
-        cover_file = glob.glob(folder[0] + "/Cover.*") # Check if the cover exists
+        cover_file = glob.glob(os.path.join(folder[0], "Cover.*")) # Check if the cover exists
 
         if len(cover_file) == 0: # If the cover doesn't exist
             return "No File" # There is no cover so there is nothing to do
@@ -1148,17 +1300,17 @@ def addCoverHistory(username, highlight_id, new_cover_link):
         if old_cover == new_cover.content: # If the cover hasn't changed
             return "Same" # The cover is the same
         
-        if not os.path.exists(folder[0] + "/History"): # Make the History folder
-            os.mkdir(folder[0] + "/History")
+        if not os.path.exists(os.path.join(folder[0], "History")): # Make the History folder
+            os.mkdir(os.path.join(folder[0], "History"))
         
         new_name = int(time()) # Get the new name for the cover
 
-        shutil.move(cover_file[0], folder[0] + f"/History/{new_name}"
-                    + cover_file[0][cover_file[0].rindex('.'):]) # Move the old cover to History folder
+        shutil.move(cover_file[0], os.path.join(folder[0], "History",
+                                    f"{new_name}" + cover_file[0][cover_file[0].rindex('.'):])) # Move the old cover to History folder
         
-        if os.path.exists(folder[0] + "/Cover_thumbnail.png"): # If the thumbnail exists
-            shutil.move(folder[0] + "/Cover_thumbnail.png", folder[0] +
-                        f"/History/{new_name}_thumbnail.png") # Move the old thumbnail to History folder
+        if os.path.exists(os.path.join(folder[0], "Cover_thumbnail.png")): # If the thumbnail exists
+            shutil.move(os.path.join(folder[0], "Cover_thumbnail.png"),
+                        os.path.join(folder[0], "History", f"{new_name}_thumbnail.png")) # Move the old thumbnail to History folder
         
         try:
             dbCursor.execute(f"""INSERT INTO CoverHistory VALUES({highlight_id}, {new_name})""") # Add the cover to the database
@@ -1197,13 +1349,12 @@ def getHighlightsData(pk):
     except:
         return None # Couldn't get the highlights data
 
-def updateSingleHighlight(pk, username, newHighlight, highlights):
+def updateSingleHighlight(pk, newHighlight, highlights):
     '''
     Updates a single highlight
 
     Parameters:
         pk (int): The profile's pk
-        username (str): The username of the profile
         newHighlight (dict): The new highlight data
         highlights (list): The list of highlights
     
@@ -1215,17 +1366,22 @@ def updateSingleHighlight(pk, username, newHighlight, highlights):
         highlight_id = int(newHighlight['id'])
 
         title = newHighlight['title']
-        folder_name = MakeFilenameFriendly(title) # Make the title filename friendly
+        folder_name = makeFilenameFriendly(title) # Make the title filename friendly
         cover_link = newHighlight['cover_media_cropped_thumbnail']['url']
 
-        folder = glob.glob(path + f"/{username}/Highlights/*_{highlight_id}") # Check if the highlight folder already exists
+        profile_folder_name = findFolderName(pk) # Get the folder name for the profile
+
+        if profile_folder_name is None:
+            return False # Couldn't find the folder name
+
+        folder = glob.glob(os.path.join(path, f"{profile_folder_name}", "Highlights", f"*_{highlight_id}")) # Check if the highlight folder already exists
 
         for i in range(len(highlights)):
             if highlights[i][0] == highlight_id: # If highlight already exists
 
                 if (highlights[i][2] == title): # If title hasn't changed
                     if (len(folder) == 0): # And folder doesn't exist
-                        os.mkdir(path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
+                        os.mkdir(os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}"))
 
                 else:
 
@@ -1234,10 +1390,10 @@ def updateSingleHighlight(pk, username, newHighlight, highlights):
                             shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
                             shutil.rmtree(i) # Remove the other folders
                         
-                        os.rename(folder[0], path + f"/{username}/Highlights/{folder_name}_{highlight_id}") # Rename the folder
+                        os.rename(folder[0], os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}")) # Rename the folder
                         
                     else:
-                        os.mkdir(path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
+                        os.mkdir(os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}"))
                     
                     try:
                         dbCursor.execute(f"""UPDATE Highlight SET title = \"{title}\"
@@ -1248,29 +1404,29 @@ def updateSingleHighlight(pk, username, newHighlight, highlights):
                         connection.rollback() # Rollback the changes
                         return True # Couldn't Update the database but the folder is updated at least
                 
-                cover_status = addCoverHistory(username, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
+                cover_status = addCoverHistory(pk, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
                 if cover_status is None:
                     return True # Couldn't check the cover but the highlight is updated at least
 
                 if cover_status != "Same": # If the cover file doesn't exist or it has changed
-                    isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover") # Try downloading highlight's cover
+                    isDownloaded = tryDownloading(cover_link, os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover")) # Try downloading highlight's cover
 
                     if isDownloaded: # If the cover is downloaded
-                        makeThumbnail(f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for cover
+                        makeThumbnail(os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"), 64, circle=True) # Make thumbnail for cover
 
                 del(highlights[i])
                 return True # Highlight was found and updated
         
         # If this highlight is new
         if len(folder) == 0:
-            os.mkdir(path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
+            os.mkdir(os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}"))
 
         else:
             for i in folder[1:]:
                 shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
                 shutil.rmtree(i) # Remove the other folders
             
-            os.rename(folder[0], path + f"/{username}/Highlights/{folder_name}_{highlight_id}")
+            os.rename(folder[0], os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}"))
         
         try:
             dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, \"{title}\", 0)""") # Add it to database
@@ -1280,28 +1436,27 @@ def updateSingleHighlight(pk, username, newHighlight, highlights):
             connection.rollback() # Rollback the changes
             return False # Couldn't add the highlight to the database
 
-        cover_status = addCoverHistory(username, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
+        cover_status = addCoverHistory(pk, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
         if cover_status is None:
             return True # Couldn't check the cover but the highlight is added at least
 
         if cover_status != "Same": # If the cover file doesn't exist or it has changed
-            isDownloaded = tryDownloading(cover_link, f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover") # Try downloading highlight's cover
+            isDownloaded = tryDownloading(cover_link, os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover")) # Try downloading highlight's cover
 
             if isDownloaded: # If the cover is downloaded
-                makeThumbnail(f"/{username}/Highlights/{folder_name}_{highlight_id}/Cover", 64, circle=True) # Make thumbnail for the cover
+                makeThumbnail(os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"), 64, circle=True) # Make thumbnail for the cover
         
         return True # Highlight was added
 
     except:
         return False # There was an error somewhere
 
-def updateHighlights(pk, username):
+def updateHighlights(pk):
     '''
     Updates the highlights of the profile
 
     Parameters:
         pk (int): The profile's pk
-        username (str): The username of the profile
     
     Returns:
         data (list): The highlights data
@@ -1319,15 +1474,20 @@ def updateHighlights(pk, username):
         if len(data) == 0: # If there is no highlight
             print("There is no highlight!")
             return data, update_states # Return the highlights data and empty list
+        
+        folder_name = findFolderName(pk) # Get the folder name for the profile
 
-        if not os.path.exists(path + f"/{username}/Highlights"):
-            os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
+        if folder_name is None:
+            return data, update_states # Couldn't find the folder name
+
+        if not os.path.exists(os.path.join(path, f"{folder_name}", "Highlights")):
+            os.mkdir(os.path.join(path, f"{folder_name}", "Highlights")) # Make Highlights folder
         
         result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
         highlights = result.fetchall() # Get the list of highlights from database
 
         for newHighlight in data:
-            update_states.append(updateSingleHighlight(pk, username, newHighlight['node'], highlights)) # Update this highlight
+            update_states.append(updateSingleHighlight(pk, newHighlight['node'], highlights)) # Update this highlight
 
         return data, update_states # Return the highlights data and update states
 
@@ -1348,7 +1508,7 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
 
     try:
         if direct_call: # If the function is called directly
-            updated = updateProfile(username, False) # Update the profile
+            updated = updateProfile(username=username, withHighlights=False) # Update the profile
 
             if not updated:
                 print("Couldn't update the profile!")
@@ -1359,14 +1519,19 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
         if is_private == 1: # If the account is private
             print("This account is private!")
             return
+        
+        folder_name = findFolderName(pk) # Get the folder name for the profile
+
+        if folder_name is None:
+            return
 
         if pk == highlight_id: # If the highlight is the stories
-            if not os.path.exists(path + f"/{username}/Stories"):
-                os.mkdir(path + f"/{username}/Stories") # Make Stories folder
+            if not os.path.exists(os.path.join(path, f"{folder_name}", "Stories")):
+                os.mkdir(os.path.join(path, f"{folder_name}", "Stories")) # Make Stories folder
         
         elif direct_call: # If the highlight is a highlight and it's a direct call
-            if not os.path.exists(path + f"/{username}/Highlights"):
-                os.mkdir(path + f"/{username}/Highlights") # Make Highlights folder
+            if not os.path.exists(os.path.join(path, f"{folder_name}", "Highlights")):
+                os.mkdir(os.path.join(path, f"{folder_name}", "Highlights")) # Make Highlights folder
         
         if direct_call and pk != highlight_id: # If the highlight is a highlight
             data = getHighlightsData(pk) # Get the highlights data
@@ -1389,13 +1554,13 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
             result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
             highlights = result.fetchall() # Get the list of highlights from database
 
-            state = updateSingleHighlight(pk, username, new_data, highlights) # Update this highlight
+            state = updateSingleHighlight(pk, new_data, highlights) # Update this highlight
 
             if not state: # Couldn't update the highlight
                 print("Couldn't update the highlight!")
                 return
         
-        number_of_items = downloadStories(pk, username, highlight_id, highlight_title) # Download the stories of the highlight
+        number_of_items = downloadStories(pk, highlight_id, highlight_title) # Download the stories of the highlight
 
         try:
             if number_of_items > 0: # If there was any story
@@ -1430,7 +1595,7 @@ def downloadHighlightsStories(username, direct_call = True):
 
     try:
         if direct_call: # If the function is called directly
-            updated = updateProfile(username, False) # Update the profile
+            updated = updateProfile(username=username, withHighlights=False) # Update the profile
 
             if not updated:
                 print("Couldn't update the profile!")
@@ -1442,7 +1607,7 @@ def downloadHighlightsStories(username, direct_call = True):
             print("This account is private!")
             return
         
-        data, update_states = updateHighlights(pk, username) # Update the highlights
+        data, update_states = updateHighlights(pk) # Update the highlights
 
         if len(update_states) == 0: # Couldn't update any highlight
             print("Couldn't update the highlights!")
