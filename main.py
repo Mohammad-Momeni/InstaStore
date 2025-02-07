@@ -23,6 +23,34 @@ HEADERS = { # Headers for session
 profile_data = None # Global variable for profile data
 stealthgram_tokens = None # Global variable for stealthgram tokens
 
+def makeTables(dbCursor):
+    '''
+    Creates the tables for the database
+
+    Parameters:
+        dbCursor (sqlite3.Cursor): The cursor for the database
+    '''
+
+    dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
+                     page_name, biography, is_private, public_email, media_count,
+                     follower_count, following_count, profile_id, last_post_code, last_tagged_post_code)""")
+    
+    dbCursor.execute("""CREATE TABLE Post(pk, post_code, is_tag, number_of_items, caption, timestamp,
+                     PRIMARY KEY(pk, post_code, is_tag), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+
+    dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
+                     number_of_items, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+    
+    dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp,
+                     PRIMARY KEY(pk, story_pk, highlight_id), FOREIGN KEY(pk) REFERENCES Profile(pk),
+                     FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
+    
+    dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
+                     PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+    
+    dbCursor.execute("""CREATE TABLE CoverHistory(highlight_id, cover_id, PRIMARY KEY(highlight_id, cover_id),
+                     FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
+
 def initialize():
     '''
     Initializes the basic stuff for the program
@@ -58,33 +86,46 @@ def initialize():
     except:
         return None, None
 
-def makeTables(dbCursor):
+def executeQuery(queries, commit, fetch):
     '''
-    Creates the tables for the database
+    Executes the query on the database
 
     Parameters:
-        dbCursor (sqlite3.Cursor): The cursor for the database
+        queries (list): The queries to execute
+        commit (bool): Should the changes be committed
+        fetch (bool): Should all of the results be fetched (True) or just one (False) or none (None)
+    
+    Returns:
+        result (list/tuple/None): The result of the query
     '''
 
-    dbCursor.execute("""CREATE TABLE Profile(pk PRIMARY KEY, username, full_name,
-                     page_name, biography, is_private, public_email, media_count,
-                     follower_count, following_count, profile_id, last_post_code, last_tagged_post_code)""")
-    
-    dbCursor.execute("""CREATE TABLE Post(pk, post_code, is_tag, number_of_items, caption, timestamp,
-                     PRIMARY KEY(pk, post_code, is_tag), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+    try:
+        if len(queries) == 1 and (fetch is not None):
+            result = dbCursor.execute(queries[0]) # Execute the query
 
-    dbCursor.execute("""CREATE TABLE Highlight(highlight_id PRIMARY KEY, pk, title,
-                     number_of_items, FOREIGN KEY(pk) REFERENCES Profile(pk))""")
+            if fetch:
+                result = result.fetchall() # Fetch all of the results
+            
+            else:
+                result = result.fetchone() # Fetch one of the results
+            
+            if commit:
+                connection.commit() # Commit the changes
+            
+            return result # Return the result
+        
+        else:
+            for query in queries:
+                dbCursor.execute(query) # Execute the query
+            
+            if commit:
+                connection.commit() # Commit the changes
+            
+            return True # Query executed successfully
     
-    dbCursor.execute("""CREATE TABLE Story(pk, story_pk, highlight_id, timestamp,
-                     PRIMARY KEY(pk, story_pk, highlight_id), FOREIGN KEY(pk) REFERENCES Profile(pk),
-                     FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
-    
-    dbCursor.execute("""CREATE TABLE ProfileHistory(pk, profile_id,
-                     PRIMARY KEY(pk, profile_id), FOREIGN KEY(pk) REFERENCES Profile(pk))""")
-    
-    dbCursor.execute("""CREATE TABLE CoverHistory(highlight_id, cover_id, PRIMARY KEY(highlight_id, cover_id),
-                     FOREIGN KEY(highlight_id) REFERENCES Highlight(highlight_id))""")
+    except:
+        connection.rollback() # Rollback the changes
+        return False # Couldn't execute the query
 
 def circleCrop(image):
     '''
@@ -256,7 +297,7 @@ def sendRequest(url, method='POST', payload=None, headers=None, retries=3, timeo
         
         elif (response.status_code) == 500: # Internal server error
             if ('stealthgram' in url) and ('EXPIRED' in response.text): # If the tokens are expired
-                if not zd.loop().run_until_complete(getStealthgramTokens()): # Get new tokens
+                if not getStealthgramTokens(): # Get new tokens
                     return None # Couldn't get new tokens
                 
                 # Set the headers for the request
@@ -343,9 +384,14 @@ def listProfiles():
         else:
             os.system('clear')
         
-        result = dbCursor.execute("""SELECT username, full_name, biography, media_count,
-                                follower_count, following_count FROM Profile""")
-        profiles = result.fetchall() # Get the list of profiles
+        query = ["""SELECT username, full_name, biography, media_count,
+                 follower_count, following_count FROM Profile"""]
+        
+        profiles = executeQuery(query, False, True) # Get the list of profiles
+
+        if profiles == False:
+            print("Couldn't list the profiles!")
+            return # There was an error in getting the profiles
 
         for profile in profiles:
             biography = profile[2]
@@ -567,7 +613,7 @@ def getPKUsername(pk):
             'User-Agent': 'Instagram 85.0.0.21.100 Android (23/6.0.1; 538dpi; 1440x2560; LGE; LG-E425f; vee3e; en_US)',
         }
 
-        response = sendRequest(url, headers=headers).json() # Get the profile's data
+        response = sendRequest(url=url, method='GET', headers=headers).json() # Get the profile's data
 
         if 'user' in response.keys(): # If the data is found
             return response['user']['username']
@@ -599,22 +645,22 @@ def changeProfileUsername(pk, old_username, new_username):
     except:
         return False # Couldn't change the folder name
 
-    try:
-        dbCursor.execute(f"""UPDATE Profile SET username = \"{new_username}\" WHERE username = \"{old_username}\"""") # Change the username in the database
-        connection.commit() # Commit the changes
+    query = [f"""UPDATE Profile SET username = \"{new_username}\" WHERE
+                username = \"{old_username}\""""]
+    
+    result = executeQuery(query, True, None) # Change the username in the database
 
+    if result == True:
         return True # Username changed successfully
     
-    except:
-        connection.rollback() # Rollback the changes
-
+    else:
         if folder_name is not None: # If the folder name was changed
             try:
                 os.rename(os.path.join(path, f"{new_username}@{pk}"), os.path.join(path, folder_name))
             
             except:
                 pass # Couldn't change the folder name back
-
+        
         return False # Couldn't change the username
 
 def addProfile(username):
@@ -634,8 +680,13 @@ def addProfile(username):
             print("There was an error!")
             return # Couldn't get the data
         
-        result = dbCursor.execute(f"""SELECT pk, username FROM Profile WHERE pk = {data['pk']}""")
-        doesExist = result.fetchall() # Get the pk information
+        query = [f"""SELECT pk, username FROM Profile WHERE pk = {data['pk']}"""]
+
+        doesExist = executeQuery(query, False, True) # Get the pk information
+        
+        if doesExist == False:
+            print("There was an error!")
+            return # Couldn't get the pk information
 
         if len(doesExist) != 0: # If the pk is already added
             if doesExist[0][1] == data['username']: # If the username is the same
@@ -677,33 +728,47 @@ def addProfile(username):
             print("There was an error!")
             return # Couldn't make the thumbnail
 
-        instruction = f"""INSERT INTO Profile VALUES({data['pk']}, \"{data['username']}\", \"{data['full_name']}\","""
+        query = f"""INSERT INTO Profile VALUES({data['pk']}, \"{data['username']}\", \"{data['full_name']}\","""
 
         if data['page_name'] is None:
-            instruction += "NULL"
+            query += "NULL"
         else:
-            instruction += f"""\"{data['page_name']}\""""
+            query += f"""\"{data['page_name']}\""""
         
         if data['biography'] == '':
-            instruction += f", NULL"
+            query += f", NULL"
             data['biography'] = None
         else:
-            instruction += f""", \"{data['biography']}\""""
+            query += f""", \"{data['biography']}\""""
 
-        instruction += f""", {data['is_private']},"""
+        query += f""", {data['is_private']},"""
 
         if data['public_email'] is None:
-            instruction += "NULL"
+            query += "NULL"
         else:
-            instruction += f"""\"{data['public_email']}\""""
+            query += f"""\"{data['public_email']}\""""
 
-        instruction += f""", {data['media_count']}, {data['follower_count']},
+        query += f""", {data['media_count']}, {data['follower_count']},
                         {data['following_count']}, {data['profile_id']}, NULL, NULL)"""
+        
+        queries = [query, # Add the profile to the database
+                   f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']},
+                         "Stories", 0)"""] # Add a default highlight for the stories (highlight_id = pk)
 
-        dbCursor.execute(instruction) # Add the profile to the database
-        dbCursor.execute(f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']},
-                         "Stories", 0)""") # Add a default highlight for the stories (highlight_id = pk)
-        connection.commit() # Commit the changes
+        result = executeQuery(queries, True, None) # Add the profile to the database
+        
+        if result == False: # Couldn't add the profile
+            try:
+                files = glob.glob(os.path.join(path, f"{data['username']}@{data['pk']}", "Profiles", "Profile*")) # Get the profile files
+
+                for file in files:
+                    os.remove(file) # Remove the profile files
+            
+            except:
+                pass # Couldn't remove the profile files
+
+            print("There was an error!") # Couldn't add the profile
+            return
         
         if not data['is_private']:
             updateHighlights(data['pk']) # If the account isn't private then update it's highlights
@@ -720,7 +785,6 @@ def addProfile(username):
         except:
             pass # Couldn't remove the profile files
 
-        connection.rollback() # Rollback the changes
         print("There was an error!") # Couldn't add the profile
 
 def updateProfile(username, withHighlights = True, profile_data = None):
@@ -737,8 +801,14 @@ def updateProfile(username, withHighlights = True, profile_data = None):
     '''
 
     try:
-        result = dbCursor.execute(f"""SELECT pk, profile_id FROM Profile WHERE username = \"{username}\"""")
-        user_data = result.fetchone() # Get current information of user
+        query = [f"""SELECT pk, profile_id FROM Profile
+                 WHERE username = \"{username}\""""]
+        
+        user_data = executeQuery(query, False, False) # Get current information of user
+        
+        if user_data == False:
+            print("Couldn't update profile")
+            return False
 
         if profile_data is None: # If the profile's data is not already fetched (function not called from addProfile)
             new_username = getPKUsername(user_data[0]) # Get the username of the profile
@@ -784,46 +854,60 @@ def updateProfile(username, withHighlights = True, profile_data = None):
     
     except:
         print("Couldn't update profile")
-        return False # Couldn't update the profile
+        return False
     
     try:
         if not makeThumbnail(new_data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
             print("Couldn't update profile")
             return False
         
-        instruction = f"""UPDATE Profile SET full_name = \"{new_data['full_name']}\", page_name = """
+        query = f"""UPDATE Profile SET full_name = \"{new_data['full_name']}\", page_name = """
 
         if new_data['page_name'] is None:
-            instruction += "NULL"
+            query += "NULL"
         else:
-            instruction += f"""\"{new_data['page_name']}\""""
+            query += f"""\"{new_data['page_name']}\""""
         
-        instruction += ", biography = "
+        query += ", biography = "
         
         if new_data['biography'] == '':
-            instruction += f"NULL"
+            query += f"NULL"
             new_data['biography'] = None
         else:
-            instruction += f"""\"{new_data['biography']}\""""
+            query += f"""\"{new_data['biography']}\""""
 
-        instruction += f""", is_private = {new_data['is_private']}, public_email = """
+        query += f""", is_private = {new_data['is_private']}, public_email = """
 
         if new_data['public_email'] is None:
-            instruction += "NULL"
+            query += "NULL"
         else:
-            instruction += f"""\"{new_data['public_email']}\""""
+            query += f"""\"{new_data['public_email']}\""""
 
-        instruction += f""", media_count = {new_data['media_count']}, follower_count = {new_data['follower_count']},
+        query += f""", media_count = {new_data['media_count']}, follower_count = {new_data['follower_count']},
                         following_count = {new_data['following_count']}, profile_id = {new_data['profile_id']}
                         WHERE pk = {new_data['pk']}"""
         
-        dbCursor.execute(instruction) # Update profile's information in database
+        queries = [query] # Update the profile's information in database
 
         if profile_changed: # Profile picture has changed
-            dbCursor.execute(f"""INSERT INTO ProfileHistory VALUES({new_data['pk']},
-                             {user_data[1]})""") # Add the past profile to history
+            queries.append(f"""INSERT INTO ProfileHistory VALUES({new_data['pk']},
+                           {user_data[1]})""") # Add the past profile to history
         
-        connection.commit() # Commit the changes
+        result = executeQuery(queries, True, None) # Update the profile's information in database
+
+        if result == False: # Couldn't update the profile
+            if profile_changed: # Profile picture has changed
+                try:
+                    files = glob.glob(os.path.join(path, f"{new_data['username']@new_data['pk']}", "Profiles", "Profile*")) # Get the profile files
+
+                    for file in files:
+                        os.remove(file) # Remove the profile files
+                
+                except:
+                    pass # Couldn't remove the profile files
+
+            print("Couldn't update profile")
+            return False
 
         if withHighlights and (not new_data['is_private']):
             updateHighlights(new_data['pk']) # If the account isn't private then update it's highlights
@@ -843,7 +927,6 @@ def updateProfile(username, withHighlights = True, profile_data = None):
             except:
                 pass # Couldn't remove the profile files
 
-        connection.rollback() # Rollback the changes
         print("Couldn't update profile")
         return False # Threre was an error somewhere
 
@@ -863,9 +946,13 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
     '''
 
     try:
-        result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk} AND
-                                  story_pk = {story_pk} AND highlight_id = {highlight_id}""")
-        same_story = result.fetchone() # Check if the story is already downloaded
+        query = [f"""SELECT * FROM Story WHERE pk = {pk} AND
+                 story_pk = {story_pk} AND highlight_id = {highlight_id}"""]
+        
+        same_story = executeQuery(query, False, False) # Check if the story is already downloaded
+        
+        if same_story == False:
+            return None # Couldn't check the story
 
         if same_story is not None: # An story with same story_pk and highlight_id is already downloaded
             return True # Story already downloaded
@@ -890,13 +977,17 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
                                 
                                 shutil.copy(file, os.path.join(path, f"{folder_name}", "Highlights", f"{highlight_title}_{highlight_id}", f"{file[index + 1:]}"))
 
-                            dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                            connection.commit() # Commit the changes
+                            query = [f"""INSERT INTO Story VALUES({stories[i][0]},
+                                     {stories[i][1]}, {highlight_id}, {stories[i][3]})"""]
+                            
+                            result = executeQuery(query, True, None) # Add the story to the database
+
+                            if result == False:
+                                return False # Something went wrong but we know it's not from the same highlight
+                            
                             return True
                     
                     except:
-                        connection.rollback() # Rollback the changes
                         return False # Something went wrong but we know it's not from the same highlight
 
                 else: # It's from another highlight
@@ -918,13 +1009,17 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
                                     else:
                                         shutil.copy(file, os.path.join(path, f"{folder_name}", "Stories", f"{file[index + 1:]}"))
                                 
-                                dbCursor.execute(f"""INSERT INTO Story VALUES({stories[i][0]},
-                                                    {stories[i][1]}, {highlight_id}, {stories[i][3]})""") # Add the story to the database
-                                connection.commit() # Commit the changes
+                                query = [f"""INSERT INTO Story VALUES({stories[i][0]},
+                                         {stories[i][1]}, {highlight_id}, {stories[i][3]})"""]
+                                
+                                result = executeQuery(query, True, None) # Add the story to the database
+
+                                if result == False:
+                                    return False # Something went wrong but we know it's not from the same highlight
+                                
                                 return True
                             
                     except:
-                        connection.rollback() # Rollback the changes
                         return False # Something went wrong but we know it's not from the same highlight
 
                 break # One story with same story_pk is enough
@@ -932,64 +1027,7 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
         return False # Couldn't find the story
     
     except:
-        connection.rollback() # Rollback the changes
         return None # Something went wrong
-
-async def getStealthgramTokens():
-    '''
-    Gets the stealthgram tokens
-
-    Returns:
-        result (bool): If the tokens are updated successfully or not
-    '''
-
-    try:
-        # Create a new browser instance in headless mode
-        browser = await zd.start(browser_args=["--headless=new", '--disable-gpu'])
-
-        # Create a new page instance
-        page = await browser.get('https://stealthgram.com/profile/test')
-
-        sleep(5) # Wait for the data to load
-
-        #TODO
-        sleep(25) # Wait for Cloudflare to verify the browser
-
-        # Get the cookies
-        cookies = await page.send(cdp_obj=zd.cdp.network.get_cookies(urls=[f'https://stealthgram.com/profile/test']))
-
-        # Get the tokens from the cookies
-        global stealthgram_tokens
-        stealthgram_tokens = {}
-
-        for cookie in cookies:
-            if cookie.name == 'access-token':
-                stealthgram_tokens['access-token'] = cookie.value
-            
-            elif cookie.name == 'refresh-token':
-                stealthgram_tokens['refresh-token'] = cookie.value
-        
-        # Close the page
-        await page.close()
-
-        # Stop the browser
-        await browser.stop()
-
-        # Check if the tokens are available
-        if 'access-token' not in stealthgram_tokens.keys() or 'refresh-token' not in stealthgram_tokens.keys():
-            stealthgram_tokens = None # Tokens are not available
-            return False # Couldn't get the tokens
-
-        return True # Tokens updated successfully
-    
-    except:
-        # Close the page
-        await page.close()
-
-        # Stop the browser
-        await browser.stop()
-
-        return False # Couldn't update the tokens
 
 def updateStealthgramTokens(headers):
     '''
@@ -1004,19 +1042,56 @@ def updateStealthgramTokens(headers):
 
     try:
         set_cookies = headers.get('set-cookie').split(' ') # Get the set-cookie's from the headers
+
+        found = 0 # Number of tokens found
         
         global stealthgram_tokens
         for cookie in set_cookies:
             if 'access-token' in cookie:
                 stealthgram_tokens['access-token'] = cookie[cookie.index('=') + 1:cookie.index(';')]
+                found += 1
             
             elif 'refresh-token' in cookie:
                 stealthgram_tokens['refresh-token'] = cookie[cookie.index('=') + 1:cookie.index(';')]
+                found += 1
+            
+            if found == 2:
+                break # Found both tokens
     
         return True # Tokens updated successfully
     
     except:
         return False # Couldn't update the tokens
+
+def getStealthgramTokens():
+    '''
+    Gets the stealthgram tokens
+
+    Returns:
+        result (bool): If the tokens are updated successfully or not
+    '''
+
+    try:
+        url = 'https://stealthgram.com/'
+
+        response = sendRequest(url=url, method='GET', headers=HEADERS) # Get the data
+
+        if response is None:
+            return False # Couldn't get the tokens
+        
+        global stealthgram_tokens
+        stealthgram_tokens = {} # Empty the tokens
+
+        if updateStealthgramTokens(response.headers):
+            return True # Tokens updated successfully
+
+        stealthgram_tokens = None # Tokens are not available
+
+        return False # Couldn't get the tokens
+    
+    except:
+        stealthgram_tokens = None # Tokens are not available
+        return False # Couldn't get the tokens
 
 def callStealthgramAPI(pk, highlight_id, is_highlight=False):
     '''
@@ -1059,7 +1134,7 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
                 payload = json.dumps({
                     "body": {
                         "ids": [
-                            highlight_id
+                            pk
                         ],
                     },
                     "url": "user/get_stories"
@@ -1068,7 +1143,7 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
         # Check if stealthgram tokens are available
         global stealthgram_tokens
         if stealthgram_tokens is None:
-            if not zd.loop().run_until_complete(getStealthgramTokens()):
+            if not getStealthgramTokens():
                 return None # Couldn't update the tokens
         
         # Set the headers for the request
@@ -1085,7 +1160,6 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
     
     except:
         return None # There was an error
-    
 
 def getStoriesData(pk, highlight_id):
     '''
@@ -1199,8 +1273,12 @@ def getStories(pk, highlight_id, highlight_title):
         if number_of_items == 0:
             return [], 0 # Return an empty list if there is no story
         
-        result = dbCursor.execute(f"""SELECT * FROM Story WHERE pk = {pk}""")
-        stories = result.fetchall() # Get the list of already downloaded stories from database
+        query = [f"""SELECT * FROM Story WHERE pk = {pk}"""]
+
+        stories = executeQuery(query, False, True) # Get the list of already downloaded stories from database
+        
+        if stories == False:
+            return None, number_of_items # Something went wrong
 
         newStories = [] # List of new stories that need downloading
         
@@ -1252,13 +1330,17 @@ def downloadStories(pk, highlight_id, highlight_title):
             if not makeThumbnail(story[5], 320, is_video=story[6]): # Try making a thumbnail for the media
                 print("Couldn't download story!")
                 continue
+
+            query = [f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
+                     {story[2]}, {story[3]})"""]
             
-            dbCursor.execute(f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
-                             {story[2]}, {story[3]})""") # Add the story to the database
-            connection.commit() # Commit the changes
+            result = executeQuery(query, True, None) # Add the story to the database
+
+            if result == False:
+                print("There was an error!")
+                continue # Couldn't download, skip and try the next one
 
         except:
-            connection.rollback() # Rollback the changes
             print("There was an error!")
             continue # Couldn't download, skip and try the next one
     
@@ -1312,12 +1394,9 @@ def addCoverHistory(pk, highlight_id, new_cover_link):
             shutil.move(os.path.join(folder[0], "Cover_thumbnail.png"),
                         os.path.join(folder[0], "History", f"{new_name}_thumbnail.png")) # Move the old thumbnail to History folder
         
-        try:
-            dbCursor.execute(f"""INSERT INTO CoverHistory VALUES({highlight_id}, {new_name})""") # Add the cover to the database
-            connection.commit() # Commit the changes
-        
-        except:
-            connection.rollback() # Rollback the changes
+        query = [f"""INSERT INTO CoverHistory VALUES({highlight_id}, {new_name})"""]
+
+        executeQuery(query, True, None) # Add the cover to the database
         
         return "Changed" # The cover has changed
 
@@ -1395,13 +1474,12 @@ def updateSingleHighlight(pk, newHighlight, highlights):
                     else:
                         os.mkdir(os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}"))
                     
-                    try:
-                        dbCursor.execute(f"""UPDATE Highlight SET title = \"{title}\"
-                                        WHERE highlight_id = {highlight_id}""") # Update the title
-                        connection.commit() # Commit the changes
+                    query = [f"""UPDATE Highlight SET title = \"{title}\"
+                                 WHERE highlight_id = {highlight_id}"""]
                     
-                    except:
-                        connection.rollback() # Rollback the changes
+                    result = executeQuery(query, True, None) # Update the title
+
+                    if result == False:
                         return True # Couldn't Update the database but the folder is updated at least
                 
                 cover_status = addCoverHistory(pk, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
@@ -1428,12 +1506,11 @@ def updateSingleHighlight(pk, newHighlight, highlights):
             
             os.rename(folder[0], os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}"))
         
-        try:
-            dbCursor.execute(f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, \"{title}\", 0)""") # Add it to database
-            connection.commit() # Commit the changes
-        
-        except:
-            connection.rollback() # Rollback the changes
+        query = [f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, \"{title}\", 0)"""]
+
+        result = executeQuery(query, True, None) # Add it to database
+
+        if result == False:
             return False # Couldn't add the highlight to the database
 
         cover_status = addCoverHistory(pk, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
@@ -1483,8 +1560,13 @@ def updateHighlights(pk):
         if not os.path.exists(os.path.join(path, f"{folder_name}", "Highlights")):
             os.mkdir(os.path.join(path, f"{folder_name}", "Highlights")) # Make Highlights folder
         
-        result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
-        highlights = result.fetchall() # Get the list of highlights from database
+        query = [f"""SELECT * FROM Highlight WHERE pk = {pk}"""]
+
+        highlights = executeQuery(query, False, True) # Get the list of highlights from database
+
+        if highlights == False:
+            print("Couldn't get the highlights!")
+            return data, update_states # There was an error somewhere but return the highlights data and update states anyway
 
         for newHighlight in data:
             update_states.append(updateSingleHighlight(pk, newHighlight['node'], highlights)) # Update this highlight
@@ -1513,8 +1595,9 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
             if not updated:
                 print("Couldn't update the profile!")
         
-        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\"""")
-        pk, is_private = result.fetchone() # Get the pk and is_private of the profile
+        query = [f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\""""]
+
+        pk, is_private = executeQuery(query, False, False) # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
             print("This account is private!")
@@ -1551,8 +1634,13 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
                 print("Couldn't update the highlight!")
                 return
             
-            result = dbCursor.execute(f"""SELECT * FROM Highlight WHERE pk = {pk}""")
-            highlights = result.fetchall() # Get the list of highlights from database
+            query = [f"""SELECT * FROM Highlight WHERE pk = {pk}"""]
+
+            highlights = executeQuery(query, False, True) # Get the list of highlights from database
+
+            if highlights == False:
+                print("Couldn't update the highlight!")
+                return # There was an error somewhere
 
             state = updateSingleHighlight(pk, new_data, highlights) # Update this highlight
 
@@ -1564,18 +1652,21 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
 
         try:
             if number_of_items > 0: # If there was any story
-                result = dbCursor.execute(f"""SELECT number_of_items FROM Highlight WHERE highlight_id = {highlight_id}""")
-                old_number_of_items = result.fetchone()[0] # Get the old number of items
+                query = [f"""SELECT number_of_items FROM Highlight WHERE highlight_id = {highlight_id}"""]
+
+                old_number_of_items = executeQuery(query, False, False)[0] # Get the old number of items
                 
-                result = dbCursor.execute(f"""SELECT COUNT(*) FROM Story WHERE pk = {pk} AND highlight_id = {highlight_id}""")
-                number_of_downloaded = result.fetchone()[0] # Get the number of downloaded stories
+                query = [f"""SELECT COUNT(*) FROM Story WHERE pk = {pk} AND highlight_id = {highlight_id}"""]
+
+                number_of_downloaded = executeQuery(query, False, False)[0] # Get the number of downloaded stories
 
                 new_max = max(number_of_items, number_of_downloaded) # Get the new maximum number of items
 
                 if new_max > old_number_of_items: # If the new maximum is greater than the old maximum
-                    dbCursor.execute(f"""UPDATE Highlight SET number_of_items = {new_max}
-                                    WHERE highlight_id = {highlight_id}""") # Update the number of items in the database
-                    connection.commit() # Commit the changes
+                    query = [f"""UPDATE Highlight SET number_of_items = {new_max}
+                             WHERE highlight_id = {highlight_id}"""]
+                    
+                    executeQuery(query, True, None) # Update the number of items in the database
 
         except: # Couldn't update the number of items
             pass
@@ -1600,8 +1691,9 @@ def downloadHighlightsStories(username, direct_call = True):
             if not updated:
                 print("Couldn't update the profile!")
         
-        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\"""")
-        pk, is_private = result.fetchone() # Get the pk and is_private of the profile
+        query = [f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\""""]
+
+        pk, is_private = executeQuery(query, False, False) # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
             print("This account is private!")
