@@ -16,14 +16,14 @@ INVALID_CHARACTERS = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'] # Invalid ch
 
 path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage") # Base path
 
-HEADERS = { # Headers for session
+HEADERS = { # Headers for the requests
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 }
 
 profile_data = None # Global variable for profile data
 stealthgram_tokens = None # Global variable for stealthgram tokens
 
-def makeTables(dbCursor):
+def make_tables(dbCursor):
     '''
     Creates the tables for the database
 
@@ -75,7 +75,7 @@ def initialize():
 
         if initializeTables:
             try:
-                makeTables(dbCursor) # If tables are not created, create them
+                make_tables(dbCursor=dbCursor) # If tables are not created, create them
             
             except:
                 os.remove(os.path.join(path, "data.db")) # If there was an error then remove the database
@@ -86,7 +86,7 @@ def initialize():
     except:
         return None, None
 
-def executeQuery(queries, commit, fetch):
+def execute_query(queries, commit, fetch):
     '''
     Executes the query on the database
 
@@ -127,7 +127,7 @@ def executeQuery(queries, commit, fetch):
         connection.rollback() # Rollback the changes
         return False # Couldn't execute the query
 
-def circleCrop(image):
+def circle_crop(image):
     '''
     Crops the image to a circle
 
@@ -147,7 +147,7 @@ def circleCrop(image):
 
     image.putalpha(mask) # Applying the mask to the image
     
-def makeThumbnail(address, size, is_video = False, circle = False):
+def make_thumbnail(address, size, is_video=False, circle=False):
     '''
     Makes a thumbnail for the given file and saves it
 
@@ -193,7 +193,7 @@ def makeThumbnail(address, size, is_video = False, circle = False):
         resized_image = image.resize((size, size)) # Resize the image to the thumbnail size
 
         if circle: # If the thumbnail should be a circle
-            circleCrop(resized_image) # Cropping the thumbnail to a circle
+            circle_crop(image=resized_image) # Cropping the thumbnail to a circle
 
         file_name = os.path.basename(file) # Get the filename
         file = file.replace(file_name, "") # Get the new path for the thumbnail
@@ -207,7 +207,7 @@ def makeThumbnail(address, size, is_video = False, circle = False):
     except:
         return False # Couldn't make the thumbnail
 
-def guessType(file):
+def guess_type(file):
     '''
     Guesses the type of the file
 
@@ -228,7 +228,7 @@ def guessType(file):
         
     return 'None' # Couldn't guess or it wasn't image or video
 
-def makeFilenameFriendly(text):
+def make_filename_friendly(text):
     '''
     Makes the text filename friendly
 
@@ -244,7 +244,7 @@ def makeFilenameFriendly(text):
     
     return text # Return the filename friendly text
 
-def findFolderName(pk):
+def find_folder_name(pk):
     '''
     Finds the folder name for the profile
 
@@ -268,7 +268,7 @@ def findFolderName(pk):
     except:
         return None # Couldn't find the folder name
 
-def sendRequest(url, method='POST', payload=None, headers=None, retries=3, timeout=60):
+def send_request(url, method='POST', payload=None, headers=None, retries=3, timeout=60):
     '''
     Sends a request to the url and returns the response
 
@@ -293,11 +293,11 @@ def sendRequest(url, method='POST', payload=None, headers=None, retries=3, timeo
         elif (response.status_code) == 429 and (retries > 0): # Too many requests
             sleep(30) # Sleep for 30 seconds
 
-            return sendRequest(url=url, method=method, payload=payload, headers=headers, retries=retries - 1) # Try again
+            return send_request(url=url, method=method, payload=payload, headers=headers, retries=retries-1) # Try again
         
         elif (response.status_code) == 500: # Internal server error
             if ('stealthgram' in url) and ('EXPIRED' in response.text): # If the tokens are expired
-                if not getStealthgramTokens(): # Get new tokens
+                if not get_stealthgram_tokens(): # Get new tokens
                     return None # Couldn't get new tokens
                 
                 # Set the headers for the request
@@ -306,7 +306,7 @@ def sendRequest(url, method='POST', payload=None, headers=None, retries=3, timeo
                 }
                 headers.update(HEADERS) # Add the default headers to the request
 
-                return sendRequest(url=url, method=method, payload=payload, headers=headers, retries=retries - 1) # Try again with the new tokens
+                return send_request(url=url, method=method, payload=payload, headers=headers, retries=retries-1) # Try again with the new tokens
         
         else:
             return None # Couldn't get the data
@@ -314,7 +314,7 @@ def sendRequest(url, method='POST', payload=None, headers=None, retries=3, timeo
     except:
         return None # Couldn't get the data
 
-def downloadLink(link, address):
+def download_link(link, address):
     '''
     Downloads the link and saves it to the address
 
@@ -344,7 +344,7 @@ def downloadLink(link, address):
     except:
         return False # Couldn't download the link
 
-def tryDownloading(link, address, retries = 3):
+def try_downloading(link, address, retries=3):
     '''
     Tries to download the link for retries times
 
@@ -357,21 +357,20 @@ def tryDownloading(link, address, retries = 3):
         result (bool): If the link is downloaded successfully or not
     '''
 
-    isDownloaded = downloadLink(link, address) # Try downloading the link
+    isDownloaded = download_link(link=link, address=address) # Try downloading the link
 
-    if not isDownloaded: # If couldn't download the link, Try 5 more times
-        for i in range(retries):
-            isDownloaded = downloadLink(link, address) # Try downloading the link
+    if not isDownloaded: # If couldn't download the link, Try retries times
+        for _ in range(retries):
+            isDownloaded = download_link(link=link, address=address) # Try downloading the link
 
             if isDownloaded: # If downloaded the link
                 return True
 
-        if not isDownloaded:
-            return False # Couldn't download the link
+        return False # Couldn't download the link
         
-    return True
+    return True # Link downloaded successfully
 
-def listProfiles():
+def list_profiles():
     '''
     Lists the profiles in the database
     '''
@@ -387,7 +386,7 @@ def listProfiles():
         query = ["""SELECT username, full_name, biography, media_count,
                  follower_count, following_count FROM Profile"""]
         
-        profiles = executeQuery(query, False, True) # Get the list of profiles
+        profiles = execute_query(queries=query, commit=False, fetch=True) # Get the list of profiles
 
         if profiles == False:
             print("Couldn't list the profiles!")
@@ -405,7 +404,7 @@ def listProfiles():
     except:
         print("Couldn't list the profiles!") # There was an error somewhere
 
-def moveProfileHistory(pk, profile_id):
+def move_profile_history(pk, profile_id):
     '''
     Moves the past profile files (if any) to History folder
 
@@ -418,7 +417,7 @@ def moveProfileHistory(pk, profile_id):
     '''
 
     try:
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if folder_name is None:
             return True # No profile folder to move
@@ -458,7 +457,7 @@ async def response_handler(evt: zd.cdp.network.ResponseReceived):
             global profile_data
             profile_data = zd.cdp.network.get_response_body(evt.request_id)
 
-async def ProfileDataAPI(username):
+async def profile_data_api(username):
     '''
     Calls the API to get the profile data
 
@@ -525,7 +524,7 @@ async def ProfileDataAPI(username):
 
         return None # There was an error
 
-def getProfileData(username):
+def get_profile_data(username):
     '''
     Gets the profile's data
 
@@ -541,7 +540,7 @@ def getProfileData(username):
         global profile_data
         profile_data = None
 
-        response = zd.loop().run_until_complete(ProfileDataAPI(username)) # Get the profile's data
+        response = zd.loop().run_until_complete(profile_data_api(username=username)) # Get the profile's data
 
         if response is None:
             return None # Couldn't get the data
@@ -595,7 +594,7 @@ def getProfileData(username):
     except:
         return None # Couldn't get the data
 
-def getPKUsername(pk):
+def get_pk_username(pk):
     '''
     Gets the username of the given pk
 
@@ -613,7 +612,7 @@ def getPKUsername(pk):
             'User-Agent': 'Instagram 85.0.0.21.100 Android (23/6.0.1; 538dpi; 1440x2560; LGE; LG-E425f; vee3e; en_US)',
         }
 
-        response = sendRequest(url=url, method='GET', headers=headers).json() # Get the profile's data
+        response = send_request(url=url, method='GET', headers=headers).json() # Get the profile's data
 
         if 'user' in response.keys(): # If the data is found
             return response['user']['username']
@@ -623,7 +622,7 @@ def getPKUsername(pk):
     except:
         return None # Couldn't get the data
 
-def changeProfileUsername(pk, old_username, new_username):
+def change_profile_username(pk, old_username, new_username):
     '''
     Changes the profile's username
 
@@ -637,7 +636,7 @@ def changeProfileUsername(pk, old_username, new_username):
     '''
 
     try:
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if folder_name is not None:
             os.rename(os.path.join(path, folder_name), os.path.join(path, f"{new_username}@{pk}")) # Change the folder name
@@ -648,7 +647,7 @@ def changeProfileUsername(pk, old_username, new_username):
     query = [f"""UPDATE Profile SET username = \"{new_username}\" WHERE
                 username = \"{old_username}\""""]
     
-    result = executeQuery(query, True, None) # Change the username in the database
+    result = execute_query(queries=query, commit=True, fetch=None) # Change the username in the database
 
     if result == True:
         return True # Username changed successfully
@@ -663,7 +662,7 @@ def changeProfileUsername(pk, old_username, new_username):
         
         return False # Couldn't change the username
 
-def addProfile(username):
+def add_profile(username):
     '''
     Adds a profile to the database
 
@@ -675,29 +674,29 @@ def addProfile(username):
     '''
 
     try:
-        data = getProfileData(username) # Get the profile's data
+        data = get_profile_data(username=username) # Get the profile's data
         if data is None:
             print("There was an error!")
             return # Couldn't get the data
         
         query = [f"""SELECT pk, username FROM Profile WHERE pk = {data['pk']}"""]
 
-        doesExist = executeQuery(query, False, True) # Get the pk information
+        does_exist = execute_query(queries=query, commit=False, fetch=True) # Get the pk information
         
-        if doesExist == False:
+        if does_exist == False:
             print("There was an error!")
             return # Couldn't get the pk information
 
-        if len(doesExist) != 0: # If the pk is already added
-            if doesExist[0][1] == data['username']: # If the username is the same
+        if len(does_exist) != 0: # If the pk is already added
+            if does_exist[0][1] == data['username']: # If the username is the same
                 print("This account is already added!")
                 return # Profile already exist, don't need to continue
             
-            if not changeProfileUsername(data['pk'], doesExist[0][1], data['username']):
+            if not change_profile_username(pk=data['pk'], old_username=does_exist[0][1], new_username=data['username']):
                 print("There was an error!")
                 return # Couldn't change the username
             
-            if not updateProfile(username=data['username'], profile_data=data): # Update the profile
+            if not update_profile(username=data['username'], profile_data=data): # Update the profile
                 print("There was an error!")
 
             return # Username changed successfully and profile updated
@@ -709,11 +708,12 @@ def addProfile(username):
             os.mkdir(os.path.join(path, f"{data['username']}@{data['pk']}", "Profiles"))
         
         # Else if Profiles folder exist then move the past profile files (if any) to History folder
-        elif not moveProfileHistory(data['pk'], int(time())):
+        elif not move_profile_history(pk=data['pk'], profile_id=int(time())):
             print("Couldn't Move the past profile to history!")
             return
-    
-        isDownloaded = tryDownloading(data['original_profile_pic_link'], data['original_profile_pic']) # Try downloading the profile picture
+        
+        # Try downloading the profile picture
+        isDownloaded = try_downloading(link=data['original_profile_pic_link'], address=data['original_profile_pic'])
 
         if not isDownloaded: # Couldn't download the profile picture
             print("There was an error!")
@@ -724,7 +724,8 @@ def addProfile(username):
         return # Couldn't add the profile
     
     try:
-        if not makeThumbnail(data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
+        # Try Making a thumbnail for the profile picture
+        if not make_thumbnail(address=data['original_profile_pic'], size=128, circle=True):
             print("There was an error!")
             return # Couldn't make the thumbnail
 
@@ -755,7 +756,7 @@ def addProfile(username):
                    f"""INSERT INTO Highlight VALUES({data['pk']}, {data['pk']},
                          "Stories", 0)"""] # Add a default highlight for the stories (highlight_id = pk)
 
-        result = executeQuery(queries, True, None) # Add the profile to the database
+        result = execute_query(queries=queries, commit=True, fetch=None) # Add the profile to the database
         
         if result == False: # Couldn't add the profile
             try:
@@ -771,9 +772,9 @@ def addProfile(username):
             return
         
         if not data['is_private']:
-            updateHighlights(data['pk']) # If the account isn't private then update it's highlights
+            update_highlights(pk=data['pk']) # If the account isn't private then update it's highlights
 
-        listProfiles() # Update the screen
+        list_profiles() # Update the screen
 
     except:
         try:
@@ -787,13 +788,13 @@ def addProfile(username):
 
         print("There was an error!") # Couldn't add the profile
 
-def updateProfile(username, withHighlights = True, profile_data = None):
+def update_profile(username, with_highlights=True, profile_data=None):
     '''
     Updates the profile
 
     Parameters:
         username (str): The username of the profile
-        withHighlights (bool): Should the highlights be updated or not
+        with_highlights (bool): Should the highlights be updated or not
         profile_data (dict): The profile's data (if already fetched)
     
     Returns:
@@ -804,27 +805,27 @@ def updateProfile(username, withHighlights = True, profile_data = None):
         query = [f"""SELECT pk, profile_id FROM Profile
                  WHERE username = \"{username}\""""]
         
-        user_data = executeQuery(query, False, False) # Get current information of user
+        user_data = execute_query(queries=query, commit=False, fetch=False) # Get current information of user
         
         if user_data == False:
             print("Couldn't update profile")
             return False
 
-        if profile_data is None: # If the profile's data is not already fetched (function not called from addProfile)
-            new_username = getPKUsername(user_data[0]) # Get the username of the profile
+        if profile_data is None: # If the profile's data is not already fetched (function not called from add_profile)
+            new_username = get_pk_username(pk=user_data[0]) # Get the username of the profile
 
             if new_username is None:
                 print("Couldn't update profile")
                 return False
             
             if new_username != username: # If the username has changed
-                if not changeProfileUsername(user_data[0], username, new_username):
+                if not change_profile_username(pk=user_data[0], old_username=username, new_username=new_username):
                     print("Couldn't update profile")
                     return False
                 
                 username = new_username # Change the username to the new username
 
-            new_data = getProfileData(username) # Get new information of user
+            new_data = get_profile_data(username=username) # Get new information of user
             if new_data is None:
                 print("Couldn't update profile")
                 return False
@@ -842,11 +843,12 @@ def updateProfile(username, withHighlights = True, profile_data = None):
             os.mkdir(os.path.join(path, f"{new_data['username']}@{new_data['pk']}", "Profiles"))
         
         elif profile_changed: # Profile picture has changed
-            if not moveProfileHistory(user_data[0], user_data[1]): # Move the past profile to history
+            if not move_profile_history(pk=user_data[0], profile_id=user_data[1]): # Move the past profile to history
                 print("Couldn't update profile")
                 return False
         
-        isDownloaded = tryDownloading(new_data['original_profile_pic_link'], new_data['original_profile_pic']) # Try downloading the profile picture
+        # Try downloading the profile picture
+        isDownloaded = try_downloading(link=new_data['original_profile_pic_link'], address=new_data['original_profile_pic'])
 
         if not isDownloaded: # Couldn't download the profile picture
             print("Couldn't update profile")
@@ -857,7 +859,8 @@ def updateProfile(username, withHighlights = True, profile_data = None):
         return False
     
     try:
-        if not makeThumbnail(new_data['original_profile_pic'], 128, circle=True): # Try Making a thumbnail for the profile picture
+        # Try Making a thumbnail for the profile picture
+        if not make_thumbnail(address=new_data['original_profile_pic'], size=128, circle=True):
             print("Couldn't update profile")
             return False
         
@@ -893,7 +896,7 @@ def updateProfile(username, withHighlights = True, profile_data = None):
             queries.append(f"""INSERT INTO ProfileHistory VALUES({new_data['pk']},
                            {user_data[1]})""") # Add the past profile to history
         
-        result = executeQuery(queries, True, None) # Update the profile's information in database
+        result = execute_query(queries=queries, commit=True, fetch=None) # Update the profile's information in database
 
         if result == False: # Couldn't update the profile
             if profile_changed: # Profile picture has changed
@@ -909,10 +912,10 @@ def updateProfile(username, withHighlights = True, profile_data = None):
             print("Couldn't update profile")
             return False
 
-        if withHighlights and (not new_data['is_private']):
-            updateHighlights(new_data['pk']) # If the account isn't private then update it's highlights
+        if with_highlights and (not new_data['is_private']):
+            update_highlights(pk=new_data['pk']) # If the account isn't private then update it's highlights
 
-        listProfiles() # Update the screen
+        list_profiles() # Update the screen
 
         return True # Profile updated successfully
         
@@ -930,7 +933,7 @@ def updateProfile(username, withHighlights = True, profile_data = None):
         print("Couldn't update profile")
         return False # Threre was an error somewhere
 
-def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
+def check_duplicate_stories(pk, story_pk, highlight_id, highlight_title, stories):
     '''
     Checks if the story is already downloaded
 
@@ -949,7 +952,7 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
         query = [f"""SELECT * FROM Story WHERE pk = {pk} AND
                  story_pk = {story_pk} AND highlight_id = {highlight_id}"""]
         
-        same_story = executeQuery(query, False, False) # Check if the story is already downloaded
+        same_story = execute_query(queries=query, commit=False, fetch=False) # Check if the story is already downloaded
         
         if same_story == False:
             return None # Couldn't check the story
@@ -959,7 +962,7 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
         
         isHighlight = pk != highlight_id # highlight_id = pk is for stories
 
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         for i in range(len(stories)):
             if stories[i][1] == story_pk: # Story already downloaded
@@ -980,7 +983,7 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
                             query = [f"""INSERT INTO Story VALUES({stories[i][0]},
                                      {stories[i][1]}, {highlight_id}, {stories[i][3]})"""]
                             
-                            result = executeQuery(query, True, None) # Add the story to the database
+                            result = execute_query(queries=query, commit=True, fetch=None) # Add the story to the database
 
                             if result == False:
                                 return False # Something went wrong but we know it's not from the same highlight
@@ -1012,7 +1015,7 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
                                 query = [f"""INSERT INTO Story VALUES({stories[i][0]},
                                          {stories[i][1]}, {highlight_id}, {stories[i][3]})"""]
                                 
-                                result = executeQuery(query, True, None) # Add the story to the database
+                                result = execute_query(queries=query, commit=True, fetch=None) # Add the story to the database
 
                                 if result == False:
                                     return False # Something went wrong but we know it's not from the same highlight
@@ -1029,7 +1032,7 @@ def checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories):
     except:
         return None # Something went wrong
 
-def updateStealthgramTokens(headers):
+def update_stealthgram_tokens(headers):
     '''
     Updates the stealthgram tokens
 
@@ -1063,7 +1066,7 @@ def updateStealthgramTokens(headers):
     except:
         return False # Couldn't update the tokens
 
-def getStealthgramTokens():
+def get_stealthgram_tokens():
     '''
     Gets the stealthgram tokens
 
@@ -1074,7 +1077,7 @@ def getStealthgramTokens():
     try:
         url = 'https://stealthgram.com/'
 
-        response = sendRequest(url=url, method='GET', headers=HEADERS) # Get the data
+        response = send_request(url=url, method='GET', headers=HEADERS) # Get the data
 
         if response is None:
             return False # Couldn't get the tokens
@@ -1082,7 +1085,7 @@ def getStealthgramTokens():
         global stealthgram_tokens
         stealthgram_tokens = {} # Empty the tokens
 
-        if updateStealthgramTokens(response.headers):
+        if update_stealthgram_tokens(headers=response.headers):
             return True # Tokens updated successfully
 
         stealthgram_tokens = None # Tokens are not available
@@ -1093,7 +1096,7 @@ def getStealthgramTokens():
         stealthgram_tokens = None # Tokens are not available
         return False # Couldn't get the tokens
 
-def callStealthgramAPI(pk, highlight_id, is_highlight=False):
+def call_stealthgram_api(pk, highlight_id, is_highlight=False):
     '''
     Calls the stealthgram API to get the data
 
@@ -1120,7 +1123,7 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
             })
         
         else:
-            if pk != highlight_id: # highlight_id == pk is for stories
+            if pk != highlight_id: # pk == highlight_id is for stories
                 payload = json.dumps({
                     "body": {
                         "ids": [
@@ -1143,7 +1146,7 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
         # Check if stealthgram tokens are available
         global stealthgram_tokens
         if stealthgram_tokens is None:
-            if not getStealthgramTokens():
+            if not get_stealthgram_tokens():
                 return None # Couldn't update the tokens
         
         # Set the headers for the request
@@ -1152,16 +1155,16 @@ def callStealthgramAPI(pk, highlight_id, is_highlight=False):
         }
         headers.update(HEADERS) # Add the default headers to the request
 
-        response = sendRequest(url=link, payload=payload, headers=headers) # Get the data
+        response = send_request(url=link, payload=payload, headers=headers) # Get the data
 
-        updateStealthgramTokens(response.headers) # Update the stealthgram tokens
+        update_stealthgram_tokens(headers=response.headers) # Update the stealthgram tokens
 
         return response # Return the response
     
     except:
         return None # There was an error
 
-def getStoriesData(pk, highlight_id):
+def get_stories_data(pk, highlight_id):
     '''
     Gets the stories (or highlights) data of the profile
 
@@ -1174,7 +1177,7 @@ def getStoriesData(pk, highlight_id):
     '''
 
     try:
-        response = callStealthgramAPI(pk, highlight_id) # Get the stories data
+        response = call_stealthgram_api(pk=pk, highlight_id=highlight_id) # Get the stories data
 
         if response is None:
             return None # Couldn't get the data
@@ -1196,7 +1199,7 @@ def getStoriesData(pk, highlight_id):
     except:
         return None # Couldn't get the stories data
 
-def getSingleStory(pk, new_story, highlight_id, highlight_title, stories):
+def get_single_story(pk, new_story, highlight_id, highlight_title, stories):
     '''
     Gets a single story for download
 
@@ -1212,14 +1215,15 @@ def getSingleStory(pk, new_story, highlight_id, highlight_title, stories):
     '''
 
     try:
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if folder_name is None:
             return None # Couldn't find the folder name
 
         story_pk = int(new_story['id'][:new_story['id'].find('_')]) # The story's pk
 
-        downloaded = checkDuplicateStories(pk, story_pk, highlight_id, highlight_title, stories) # Check if the story is already downloaded
+        # Check if the story is already downloaded
+        downloaded = check_duplicate_stories(pk=pk, story_pk=story_pk, highlight_id=highlight_id, highlight_title=highlight_title, stories=stories)
 
         if downloaded or (downloaded is None):
             return None # It was (found and copied) or (couldn't check and it may be duplicate) so skip this one
@@ -1238,7 +1242,7 @@ def getSingleStory(pk, new_story, highlight_id, highlight_title, stories):
 
         # Set the saving address according to being a story or highlight
         if pk != highlight_id: # highlight_id == pk is for stories
-            media_address = os.path.join(f"{folder_name}", "Highlights", f"{makeFilenameFriendly(highlight_title)}_{highlight_id}", f"{story_pk}")
+            media_address = os.path.join(f"{folder_name}", "Highlights", f"{make_filename_friendly(text=highlight_title)}_{highlight_id}", f"{story_pk}")
 
         else:
             media_address = os.path.join(f"{folder_name}", "Stories", f"{story_pk}")
@@ -1248,7 +1252,7 @@ def getSingleStory(pk, new_story, highlight_id, highlight_title, stories):
     except:
         return None # Something went wrong
 
-def getStories(pk, highlight_id, highlight_title):
+def get_stories(pk, highlight_id, highlight_title):
     '''
     Gets the stories or highlights of the profile for download
 
@@ -1263,7 +1267,7 @@ def getStories(pk, highlight_id, highlight_title):
     '''
 
     try:
-        data = getStoriesData(pk, highlight_id) # Get the stories data
+        data = get_stories_data(pk=pk, highlight_id=highlight_id) # Get the stories data
 
         if data is None:
             return None, 0 # Couldn't get the stories data
@@ -1275,7 +1279,7 @@ def getStories(pk, highlight_id, highlight_title):
         
         query = [f"""SELECT * FROM Story WHERE pk = {pk}"""]
 
-        stories = executeQuery(query, False, True) # Get the list of already downloaded stories from database
+        stories = execute_query(queries=query, commit=False, fetch=True) # Get the list of already downloaded stories from database
         
         if stories == False:
             return None, number_of_items # Something went wrong
@@ -1283,7 +1287,8 @@ def getStories(pk, highlight_id, highlight_title):
         newStories = [] # List of new stories that need downloading
         
         for new_story in data:
-            new_story_data = getSingleStory(pk, new_story, highlight_id, highlight_title, stories) # Get the story information
+            # Get the story information
+            new_story_data = get_single_story(pk=pk, new_story=new_story, highlight_id=highlight_id, highlight_title=highlight_title, stories=stories)
 
             if new_story_data is None:
                 continue # Couldn't get the story information so skip this one
@@ -1295,7 +1300,7 @@ def getStories(pk, highlight_id, highlight_title):
     except:
         return None, number_of_items # Something went wrong
 
-def downloadStories(pk, highlight_id, highlight_title):
+def download_stories(pk, highlight_id, highlight_title):
     '''
     Downloads the stories or highlights of the profile
     
@@ -1309,7 +1314,8 @@ def downloadStories(pk, highlight_id, highlight_title):
     '''
 
     # TODO: Needs change for GUI implementation and multithreading
-    newstories, number_of_items = getStories(pk, highlight_id, highlight_title) # Get the list of new stories and the number of items
+    # Get the list of new stories and the number of items
+    newstories, number_of_items = get_stories(pk=pk, highlight_id=highlight_id, highlight_title=highlight_title)
 
     if newstories is None:
         print("There was an error!")
@@ -1321,20 +1327,20 @@ def downloadStories(pk, highlight_id, highlight_title):
 
     for story in newstories:
         try:
-            isDownloaded = tryDownloading(story[4], story[5]) # Try downloading the media
+            isDownloaded = try_downloading(link=story[4], address=story[5]) # Try downloading the media
 
             if not isDownloaded: # Couldn't download the media
                 print("Couldn't download story!")
                 continue
 
-            if not makeThumbnail(story[5], 320, is_video=story[6]): # Try making a thumbnail for the media
+            if not make_thumbnail(address=story[5], size=320, is_video=story[6]): # Try making a thumbnail for the media
                 print("Couldn't download story!")
                 continue
 
             query = [f"""INSERT INTO Story VALUES({story[0]}, {story[1]},
                      {story[2]}, {story[3]})"""]
             
-            result = executeQuery(query, True, None) # Add the story to the database
+            result = execute_query(queries=query, commit=True, fetch=None) # Add the story to the database
 
             if result == False:
                 print("There was an error!")
@@ -1346,7 +1352,7 @@ def downloadStories(pk, highlight_id, highlight_title):
     
     return number_of_items # Return the number of items
 
-def addCoverHistory(pk, highlight_id, new_cover_link):
+def add_cover_history(pk, highlight_id, new_cover_link):
     '''
     Checks the highlight cover and if it has changed then add it to the database
 
@@ -1360,12 +1366,13 @@ def addCoverHistory(pk, highlight_id, new_cover_link):
     '''
 
     try:
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if folder_name is None:
             return None # Couldn't find the folder name
-
-        folder = glob.glob(os.path.join(path, f"{folder_name}", "Highlights", f"*_{highlight_id}")) # Check if the highlight folder already exists
+        
+        # Check if the highlight folder already exists
+        folder = glob.glob(os.path.join(path, f"{folder_name}", "Highlights", f"*_{highlight_id}"))
 
         if len(folder) == 0: # If the folder doesn't exist
             return "No File" # There is no folder so there is nothing to do
@@ -1396,14 +1403,14 @@ def addCoverHistory(pk, highlight_id, new_cover_link):
         
         query = [f"""INSERT INTO CoverHistory VALUES({highlight_id}, {new_name})"""]
 
-        executeQuery(query, True, None) # Add the cover to the database
+        execute_query(queries=query, commit=True, fetch=None) # Add the cover to the database
         
         return "Changed" # The cover has changed
 
     except:
         return None # Something went wrong
 
-def getHighlightsData(pk):
+def get_highlights_data(pk):
     '''
     Gets the highlights data of the profile
 
@@ -1415,7 +1422,7 @@ def getHighlightsData(pk):
     '''
 
     try:
-        response = callStealthgramAPI(pk, None, True) # Get the highlights data
+        response = call_stealthgram_api(pk=pk, highlight_id=None, is_highlight=True) # Get the highlights data
 
         if response is None: # Couldn't get the highlights data
             return None
@@ -1428,13 +1435,13 @@ def getHighlightsData(pk):
     except:
         return None # Couldn't get the highlights data
 
-def updateSingleHighlight(pk, newHighlight, highlights):
+def update_single_highlight(pk, new_highlight, highlights):
     '''
     Updates a single highlight
 
     Parameters:
         pk (int): The profile's pk
-        newHighlight (dict): The new highlight data
+        new_highlight (dict): The new highlight data
         highlights (list): The list of highlights
     
     Returns:
@@ -1442,18 +1449,19 @@ def updateSingleHighlight(pk, newHighlight, highlights):
     '''
 
     try:
-        highlight_id = int(newHighlight['id'])
+        highlight_id = int(new_highlight['id'])
 
-        title = newHighlight['title']
-        folder_name = makeFilenameFriendly(title) # Make the title filename friendly
-        cover_link = newHighlight['cover_media_cropped_thumbnail']['url']
+        title = new_highlight['title']
+        folder_name = make_filename_friendly(text=title) # Make the title filename friendly
+        cover_link = new_highlight['cover_media_cropped_thumbnail']['url']
 
-        profile_folder_name = findFolderName(pk) # Get the folder name for the profile
+        profile_folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if profile_folder_name is None:
             return False # Couldn't find the folder name
 
-        folder = glob.glob(os.path.join(path, f"{profile_folder_name}", "Highlights", f"*_{highlight_id}")) # Check if the highlight folder already exists
+        # Check if the highlight folder already exists
+        folder = glob.glob(os.path.join(path, f"{profile_folder_name}", "Highlights", f"*_{highlight_id}"))
 
         for i in range(len(highlights)):
             if highlights[i][0] == highlight_id: # If highlight already exists
@@ -1466,7 +1474,8 @@ def updateSingleHighlight(pk, newHighlight, highlights):
 
                     if len(folder) > 0: # If folder exists then rename it
                         for i in folder[1:]:
-                            shutil.copytree(i, folder[0], dirs_exist_ok=True) # Copy the files from the other folders to the first one
+                            # Copy the files from the other folders to the first one
+                            shutil.copytree(i, folder[0], dirs_exist_ok=True)
                             shutil.rmtree(i) # Remove the other folders
                         
                         os.rename(folder[0], os.path.join(path, f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}")) # Rename the folder
@@ -1477,20 +1486,23 @@ def updateSingleHighlight(pk, newHighlight, highlights):
                     query = [f"""UPDATE Highlight SET title = \"{title}\"
                                  WHERE highlight_id = {highlight_id}"""]
                     
-                    result = executeQuery(query, True, None) # Update the title
+                    result = execute_query(queries=query, commit=True, fetch=None) # Update the title
 
                     if result == False:
                         return True # Couldn't Update the database but the folder is updated at least
                 
-                cover_status = addCoverHistory(pk, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
+                # Check the highlight cover and if it has changed then add it to the database
+                cover_status = add_cover_history(pk=pk, highlight_id=highlight_id, new_cover_link=cover_link)
                 if cover_status is None:
                     return True # Couldn't check the cover but the highlight is updated at least
 
                 if cover_status != "Same": # If the cover file doesn't exist or it has changed
-                    isDownloaded = tryDownloading(cover_link, os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover")) # Try downloading highlight's cover
+                    # Try downloading highlight's cover
+                    isDownloaded = try_downloading(link=cover_link, address=os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"))
 
                     if isDownloaded: # If the cover is downloaded
-                        makeThumbnail(os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"), 64, circle=True) # Make thumbnail for cover
+                        # Make thumbnail for cover
+                        make_thumbnail(address=os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"), size=64, circle=True)
 
                 del(highlights[i])
                 return True # Highlight was found and updated
@@ -1508,27 +1520,30 @@ def updateSingleHighlight(pk, newHighlight, highlights):
         
         query = [f"""INSERT INTO Highlight VALUES({highlight_id}, {pk}, \"{title}\", 0)"""]
 
-        result = executeQuery(query, True, None) # Add it to database
+        result = execute_query(queries=query, commit=True, fetch=None) # Add it to database
 
         if result == False:
             return False # Couldn't add the highlight to the database
-
-        cover_status = addCoverHistory(pk, highlight_id, cover_link) # Check the highlight cover and if it has changed then add it to the database
+        
+        # Check the highlight cover and if it has changed then add it to the database
+        cover_status = add_cover_history(pk=pk, highlight_id=highlight_id, new_cover_link=cover_link)
         if cover_status is None:
             return True # Couldn't check the cover but the highlight is added at least
 
         if cover_status != "Same": # If the cover file doesn't exist or it has changed
-            isDownloaded = tryDownloading(cover_link, os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover")) # Try downloading highlight's cover
+            # Try downloading highlight's cover
+            isDownloaded = try_downloading(link=cover_link, address=os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"))
 
             if isDownloaded: # If the cover is downloaded
-                makeThumbnail(os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"), 64, circle=True) # Make thumbnail for the cover
+                # Make thumbnail for the cover
+                make_thumbnail(address=os.path.join(f"{profile_folder_name}", "Highlights", f"{folder_name}_{highlight_id}", "Cover"), size=64, circle=True)
         
         return True # Highlight was added
 
     except:
         return False # There was an error somewhere
 
-def updateHighlights(pk):
+def update_highlights(pk):
     '''
     Updates the highlights of the profile
 
@@ -1541,7 +1556,7 @@ def updateHighlights(pk):
     '''
 
     try:
-        data = getHighlightsData(pk) # Get the highlights data
+        data = get_highlights_data(pk=pk) # Get the highlights data
         update_states = [] # Stores the update states of highlights
 
         if data is None: # Couldn't get the highlights data
@@ -1552,7 +1567,7 @@ def updateHighlights(pk):
             print("There is no highlight!")
             return data, update_states # Return the highlights data and empty list
         
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if folder_name is None:
             return data, update_states # Couldn't find the folder name
@@ -1562,14 +1577,15 @@ def updateHighlights(pk):
         
         query = [f"""SELECT * FROM Highlight WHERE pk = {pk}"""]
 
-        highlights = executeQuery(query, False, True) # Get the list of highlights from database
+        highlights = execute_query(queries=query, commit=False, fetch=True) # Get the list of highlights from database
 
         if highlights == False:
             print("Couldn't get the highlights!")
             return data, update_states # There was an error somewhere but return the highlights data and update states anyway
 
-        for newHighlight in data:
-            update_states.append(updateSingleHighlight(pk, newHighlight['node'], highlights)) # Update this highlight
+        for new_highlight in data:
+            # Update this highlight
+            update_states.append(update_single_highlight(pk=pk, new_highlight=new_highlight['node'], highlights=highlights))
 
         return data, update_states # Return the highlights data and update states
 
@@ -1577,7 +1593,7 @@ def updateHighlights(pk):
         print("Couldn't get the highlights!")
         return data, update_states # There was an error somewhere but return the highlights data and update states anyway
 
-def downloadSingleHighlightStories(username, highlight_id, highlight_title, direct_call = True):
+def download_single_highlight_stories(username, highlight_id, highlight_title, direct_call=True):
     '''
     Downloads the stories of a single highlight
 
@@ -1590,20 +1606,26 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
 
     try:
         if direct_call: # If the function is called directly
-            updated = updateProfile(username=username, withHighlights=False) # Update the profile
+            updated = update_profile(username=username, with_highlights=False) # Update the profile
 
             if not updated:
                 print("Couldn't update the profile!")
         
         query = [f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\""""]
 
-        pk, is_private = executeQuery(query, False, False) # Get the pk and is_private of the profile
+        result = execute_query(queries=query, commit=False, fetch=False)
+
+        if result == False:
+            print("Couldn't download the highlight!")
+            return # There was an error somewhere
+        
+        pk, is_private = result # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
             print("This account is private!")
             return
         
-        folder_name = findFolderName(pk) # Get the folder name for the profile
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if folder_name is None:
             return
@@ -1617,7 +1639,7 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
                 os.mkdir(os.path.join(path, f"{folder_name}", "Highlights")) # Make Highlights folder
         
         if direct_call and pk != highlight_id: # If the highlight is a highlight
-            data = getHighlightsData(pk) # Get the highlights data
+            data = get_highlights_data(pk=pk) # Get the highlights data
 
             if data is None: # Couldn't get the highlights data
                 print("Couldn't update the highlight!")
@@ -1636,37 +1658,45 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
             
             query = [f"""SELECT * FROM Highlight WHERE pk = {pk}"""]
 
-            highlights = executeQuery(query, False, True) # Get the list of highlights from database
+            highlights = execute_query(queries=query, commit=False, fetch=True) # Get the list of highlights from database
 
             if highlights == False:
                 print("Couldn't update the highlight!")
                 return # There was an error somewhere
 
-            state = updateSingleHighlight(pk, new_data, highlights) # Update this highlight
+            # Update this highlight
+            state = update_single_highlight(pk=pk, new_highlight=new_data, highlights=highlights)
 
             if not state: # Couldn't update the highlight
                 print("Couldn't update the highlight!")
                 return
         
-        number_of_items = downloadStories(pk, highlight_id, highlight_title) # Download the stories of the highlight
+        # Download the stories of the highlight
+        number_of_items = download_stories(pk=pk, highlight_id=highlight_id, highlight_title=highlight_title)
 
         try:
             if number_of_items > 0: # If there was any story
                 query = [f"""SELECT number_of_items FROM Highlight WHERE highlight_id = {highlight_id}"""]
 
-                old_number_of_items = executeQuery(query, False, False)[0] # Get the old number of items
+                old_number_of_items = execute_query(queries=query, commit=False, fetch=False) # Get the old number of items
+
+                if old_number_of_items == False: # Couldn't get the number of items
+                    return # There was an error somewhere
                 
                 query = [f"""SELECT COUNT(*) FROM Story WHERE pk = {pk} AND highlight_id = {highlight_id}"""]
 
-                number_of_downloaded = executeQuery(query, False, False)[0] # Get the number of downloaded stories
+                number_of_downloaded = execute_query(queries=query, commit=False, fetch=False) # Get the number of downloaded stories
 
-                new_max = max(number_of_items, number_of_downloaded) # Get the new maximum number of items
+                if number_of_downloaded == False: # Couldn't get the number of downloaded stories
+                    return # There was an error somewhere
 
-                if new_max > old_number_of_items: # If the new maximum is greater than the old maximum
+                new_max = max(number_of_items, number_of_downloaded[0]) # Get the new maximum number of items
+
+                if new_max > old_number_of_items[0]: # If the new maximum is greater than the old maximum
                     query = [f"""UPDATE Highlight SET number_of_items = {new_max}
                              WHERE highlight_id = {highlight_id}"""]
                     
-                    executeQuery(query, True, None) # Update the number of items in the database
+                    execute_query(queries=query, commit=True, fetch=None) # Update the number of items in the database
 
         except: # Couldn't update the number of items
             pass
@@ -1675,7 +1705,7 @@ def downloadSingleHighlightStories(username, highlight_id, highlight_title, dire
         print("Couldn't download the highlight!")
         return # There was an error somewhere
 
-def downloadHighlightsStories(username, direct_call = True):
+def download_highlights_stories(username, direct_call=True):
     '''
     Downloads the stories of all highlights
 
@@ -1686,20 +1716,26 @@ def downloadHighlightsStories(username, direct_call = True):
 
     try:
         if direct_call: # If the function is called directly
-            updated = updateProfile(username=username, withHighlights=False) # Update the profile
+            updated = update_profile(username=username, with_highlights=False) # Update the profile
 
             if not updated:
                 print("Couldn't update the profile!")
         
         query = [f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\""""]
 
-        pk, is_private = executeQuery(query, False, False) # Get the pk and is_private of the profile
+        result = execute_query(queries=query, commit=False, fetch=False)
+
+        if result == False:
+            print('There was an error!')
+            return
+        
+        pk, is_private = result # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
             print("This account is private!")
             return
         
-        data, update_states = updateHighlights(pk) # Update the highlights
+        data, update_states = update_highlights(pk=pk) # Update the highlights
 
         if len(update_states) == 0: # Couldn't update any highlight
             print("Couldn't update the highlights!")
@@ -1711,41 +1747,28 @@ def downloadHighlightsStories(username, direct_call = True):
                 
                 print(f"Downloading {data[i]['node']['title']}...") # Show the title of the highlight
 
-                downloadSingleHighlightStories(username, highlight_id, data[i]['node']['title'], False) # Download the stories of the highlight
+                # Download the stories of the highlight
+                download_single_highlight_stories(username=username, highlight_id=highlight_id, highlight_title=data[i]['node']['title'], direct_call=False)
 
     except:
         print("There was an error!")
-        return # There was an error somewhere
+        return
 
-def toGoogleTranslateLink(link): # Converts the link to Google Translate version link
-    try:
-        if 'www.' in link: # If the link has www.
-            link = link[link.index('www.') + 4:] # Remove the www. from the link
-        
-        else:
-            link = link[link.index('//') + 2:] # Remove the https:// from the link
+def call_post_code_api(pk, username, is_tag, is_cursor=True, cursor=None):
+    '''
+    Calls the API for the (tagged/normal) posts codes of the profile
 
-        link = link.split('/', 1) # Split the link to parts
-
-        link[0] = link[0].replace('-', '--') # Replace - with -- in the link
-        link[0] = "https://" + link[0].replace('.', '-') + ".translate.goog" # Change the link to Google Translate version
-
-        if not '?' in link[1]: # If there is no ? in the link
-            link[1] += '?' # Add ? to the link
-        
-        else: # If there is ? in the link
-            link[1] += '&' # Add & to the link
-        
-        link[1] += '_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_pto=wapp' # Add the translation options to the link
-
-        link = '/'.join(link) # Join the link parts
-
-        return link # Return the Google Translate version link
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        is_tag (bool): If the posts are tagged posts
+        is_cursor (bool): If there is a cursor
+        cursor (str): The cursor for the next set of posts
     
-    except:
-        return None # Couldn't convert the link
+    Returns:
+        data (dict/BeautifulSoup): The posts data
+    '''
 
-def callPostCodeAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Calls the API for the (tagged/normal) posts codes of the profile
     try:
         # Get the proper link according to being a post or tagged post and having a cursor or not
         if is_tag: # If the posts are tagged posts
@@ -1762,7 +1785,7 @@ def callPostCodeAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Ca
             else: # If there is no cursor
                 link = f"https://imginn.com/{username}" # Call the posts page link
         
-        response = sendRequest(toGoogleTranslateLink(link)) # Get the data
+        response = send_request(url=link, method='GET') # Get the data
 
         if response is None:
             return None # Couldn't get the data
@@ -1783,18 +1806,34 @@ def callPostCodeAPI(pk, username, is_tag, is_cursor = True, cursor = None): # Ca
     except:
         return None # Couldn't get the posts data
 
-def addSinglePost(pk, post_code, is_tag): # Adds a single post to the database
+def add_single_post(pk, post_code, is_tag):
+    '''
+    Adds a single post to the database
+
+    Parameters:
+        pk (int): The profile's pk
+        post_code (str): The post's code
+        is_tag (bool): If the post is a tagged post
+    
+    Returns:
+        result (bool): If the post is added to the database
+    '''
+
     try:
-        result = dbCursor.execute(f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = \"{post_code}\" AND is_tag = {is_tag}""")
-        doesExist = result.fetchall() # Try to get the post from the database to check if it's already recorded
+        query = [f"""SELECT * FROM Post WHERE pk = {pk} AND post_code = \"{post_code}\" AND is_tag = {is_tag}"""]
+
+        # Try to get the post from the database to check if it's already recorded
+        does_exist = execute_query(queries=query, commit=False, fetch=True)
+
+        if does_exist == False: # There was an error
+            return False # Couldn't add the post to the database
         
-        if len(doesExist) == 0: # If the post isn't recorded
-            try:
-                dbCursor.execute(f"""INSERT INTO Post VALUES({pk}, \"{post_code}\", {is_tag}, NULL, NULL, NULL)""") # Add the post to the database
-                connection.commit() # Commit the changes
-            
-            except:
-                connection.rollback() # Rollback the changes
+        if len(does_exist) == 0: # If the post isn't recorded
+            query = [f"""INSERT INTO Post VALUES({pk}, \"{post_code}\", {is_tag}, NULL, NULL, NULL)"""]
+
+            result = execute_query(queries=query, commit=True, fetch=None) # Add the post to the database
+
+            if result == False:
                 return False # Couldn't add the post to the database
         
         return True # The post is added to the database or it's already recorded
@@ -1802,7 +1841,19 @@ def addSinglePost(pk, post_code, is_tag): # Adds a single post to the database
     except:
         return False # Couldn't add the post to the database
 
-def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes of the profile
+def add_posts_codes(pk, username, is_tag):
+    '''
+    Adds the (tagged/normal) posts codes of the profile to the database
+
+    Parameters:
+        pk (int): The profile's pk
+        username (str): The username of the profile
+        is_tag (bool): If the posts are tagged posts
+    
+    Returns:
+        result (bool): If the posts are added to the database
+    '''
+
     try:
         if is_tag: # If the posts are tagged posts
             instruction = "last_tagged_post_code" # The instruction for the last post
@@ -1810,7 +1861,7 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         else:
             instruction = "last_post_code" # The instruction for the last post
         
-        soap = callPostCodeAPI(pk, username, is_tag, is_cursor=False) # Get the data
+        soap = call_post_code_api(pk=pk, username=username, is_tag=is_tag, is_cursor=False) # Get the data
 
         if soap is None: # If there is an error
             return False # Couldn't get the data
@@ -1819,10 +1870,15 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         return False # Couldn't get the data
     
     try:
-        result = dbCursor.execute(f"""SELECT {instruction} FROM Profile
-                                WHERE username = \"{username}\"""") # Get the last post that is checked
+        query = [f"""SELECT {instruction} FROM Profile
+                 WHERE username = \"{username}\""""]
         
-        last_post = result.fetchone()[0] # Get the last post that is checked
+        last_post = execute_query(queries=query, commit=False, fetch=False) # Get the last post that is checked
+        
+        if last_post == False: # There was an error
+            return False # Couldn't get the last post that is checked
+        
+        last_post = last_post[0]
 
         new_last_post = last_post # The new last post that is checked
 
@@ -1832,21 +1888,18 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
             post_code = items[i].find(attrs={'class': 'img'}).find('a').attrs['href'] # Get the post link
             post_code = post_code[post_code.index('p/') + 2:post_code.rindex('/')] # Get the post code
 
-            if not addSinglePost(pk, post_code, is_tag): # Add the post to the database
+            if not add_single_post(pk=pk, post_code=post_code, is_tag=is_tag): # Add the post to the database
                 new_last_post = post_code # Couldn't add the post to the database
             
             if (is_tag and i == 0) or ((not is_tag) and i == 3): # If it's the first tagged post or the 4th post (the first post that is certainly not pinned)
                 new_last_post = post_code # Set the last post that is checked
             
             if (i > 2 or is_tag) and last_post == post_code: # If the post is the last post that is checked
-                try:
-                    if new_last_post != last_post: # If the last post that is checked has changed
-                        dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
-                                        WHERE username = \"{username}\"""") # Update the last post that is checked
-                        connection.commit() # Commit the changes
-                
-                except:
-                    connection.rollback() # Rollback the changes
+                if new_last_post != last_post: # If the last post that is checked has changed
+                    query = [f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                             WHERE username = \"{username}\""""]
+                    
+                    execute_query(queries=query, commit=True, fetch=None) # Update the last post that is checked
 
                 return True # All the posts are checked
         
@@ -1856,16 +1909,17 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
         
         except:
             if new_last_post != last_post: # If the last post that is checked has changed
-                dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
-                                WHERE username = \"{username}\"""") # Update the last post that is checked
-                connection.commit() # Commit the changes
+                query = [f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                         WHERE username = \"{username}\""""]
+                
+                execute_query(queries=query, commit=True, fetch=None) # Update the last post that is checked
 
             return True # All the posts are checked
         
         couldnt_get_all = False # Flag for if couldn't get all the posts data
 
         while True: # Get the next set of posts until there is no more post
-            data = callPostCodeAPI(pk, username, is_tag, is_cursor=True, cursor=cursor) # Get the data
+            data = call_post_code_api(pk=pk, username=username, is_tag=is_tag, is_cursor=True, cursor=cursor) # Get the data
 
             if data is None: # Couldn't get the data
                 couldnt_get_all = True # Couldn't get all the posts data
@@ -1876,18 +1930,15 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
             for item in items:
                 post_code = item['code'] # Get the post code
 
-                if not addSinglePost(pk, post_code, is_tag): # Add the post to the database
+                if not add_single_post(pk=pk, post_code=post_code, is_tag=is_tag): # Add the post to the database
                     new_last_post = post_code # Couldn't add the post to the database
                 
                 if last_post == post_code: # If the post is the last post that is checked
-                    try:
-                        if new_last_post != last_post: # If the last post that is checked has changed
-                            dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
-                                            WHERE username = \"{username}\"""") # Update the last post that is checked
-                            connection.commit() # Commit the changes
-                    
-                    except:
-                        connection.rollback() # Rollback the changes
+                    if new_last_post != last_post: # If the last post that is checked has changed
+                        query = [f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                                 WHERE username = \"{username}\""""]
+                        
+                        execute_query(queries=query, commit=True, fetch=None) # Update the last post that is checked
 
                     return True # All the posts are checked
             
@@ -1897,25 +1948,32 @@ def addPostsCodes(pk, username, is_tag): # adds the (tagged/normal) posts codes 
             else:
                 break # There is no more post
         
-        try:
-            if (not couldnt_get_all) and (new_last_post != last_post): # If the last post that is checked has changed
-                dbCursor.execute(f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
-                                WHERE username = \"{username}\"""") # Update the last post that is checked
-                connection.commit() # Commit the changes
-        
-        except:
-            connection.rollback() # Rollback the changes
+        if (not couldnt_get_all) and (new_last_post != last_post): # If the last post that is checked has changed
+            query = [f"""UPDATE Profile SET {instruction} = \"{new_last_post}\"
+                     WHERE username = \"{username}\""""]
+            
+            execute_query(queries=query, commit=True, fetch=None) # Update the last post that is checked
         
         return True # All the posts are checked
     
     except:
         return False # Couldn't get all the posts data
 
-def callPostPageAPI(post_code): # Calls the API for the post page
+def call_post_page_api(post_code):
+    '''
+    Calls the API for the post page
+
+    Parameters:
+        post_code (str): The post's code
+    
+    Returns:
+        soap (BeautifulSoup): The post data
+    '''
+
     try:
         link = f"https://imginn.com/p/{post_code}" # The link for the post page
 
-        response = sendRequest(toGoogleTranslateLink(link)) # Get the data
+        response = send_request(url=link, method='GET') # Get the data
 
         if response is None:
             return None # Couldn't get the data
@@ -1927,9 +1985,19 @@ def callPostPageAPI(post_code): # Calls the API for the post page
     except:
         return None # Couldn't get the data
 
-def getSinglePostData(post_code): # Gets the data of a single post
+def get_single_post_data(post_code):
+    '''
+    Gets the data of a single post
+
+    Parameters:
+        post_code (str): The post's code
+    
+    Returns:
+        data (tuple): The post data
+    '''
+
     try:
-        soap = callPostPageAPI(post_code) # Get the data
+        soap = call_post_page_api(post_code=post_code) # Get the data
 
         if soap is None:
             return None # Couldn't get the post data
@@ -1966,9 +2034,6 @@ def getSinglePostData(post_code): # Gets the data of a single post
                         if 'null.jpg' in link: # If the media link is null
                             link = item.find(item_type).attrs['poster'] # Get the poster link instead
                             item_type = 'img' # Set the type to image
-
-                        if 'imginn' in link: # If the media link is from imginn
-                            link = toGoogleTranslateLink(link) # Convert the link to Google Translate version link
                         
                         links.append((link, item_type)) # Add the media link to the list
                 
@@ -2005,9 +2070,6 @@ def getSinglePostData(post_code): # Gets the data of a single post
 
                 if '&dl' in link: # If the media link is direct download link
                     link = link[:link.index('&dl')] # Get the media link
-
-                if 'imginn' in link: # If the media link is from imginn
-                    link = toGoogleTranslateLink(link) # Convert the link to Google Translate version link
                 
                 links.append((link, item_type)) # Add the media link to the list
         
@@ -2016,9 +2078,21 @@ def getSinglePostData(post_code): # Gets the data of a single post
     except:
         return None # Couldn't get the post data
 
-def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
+def download_single_post(post_code, is_tag, address):
+    '''
+    Downloads a single post
+
+    Parameters:
+        post_code (str): The post's code
+        is_tag (bool): If the post is a tagged post
+        address (str): The address for the post
+    
+    Returns:
+        status (bool): If the post is downloaded
+    '''
+
     try:
-        data = getSinglePostData(post_code) # Get the data
+        data = get_single_post_data(post_code=post_code) # Get the data
 
         if data is None: # Couldn't get the data
             return False # Couldn't download the post
@@ -2029,73 +2103,98 @@ def downloadSinglePost(post_code, is_tag, address): # Downloads a single post
         
         for i in range(len(links)):
             try:
-                isDownloaded = tryDownloading(links[i][0], f"{address}/{post_code}_{i}") # Try downloading the media
+                # Try downloading the media
+                isDownloaded = try_downloading(link=links[i][0], address=os.path.join(f"{address}", f"{post_code}_{i}"))
 
                 if not isDownloaded: # Couldn't download the media
                     return False # Couldn't download the post
                 
-                if not makeThumbnail(f"{address}/{post_code}_{i}", 320, is_video=(links[i][1] == 'video')): # Try making a thumbnail for the media
+                # Try making a thumbnail for the media
+                if not make_thumbnail(address=os.path.join(f"{address}", f"{post_code}_{i}"), size=320, is_video=(links[i][1] == 'video')):
                     return False # Couldn't download the post
             
             except:
                 return False # Couldn't download the post
         
-        try:
-            instruction = f"""UPDATE Post SET number_of_items = {len(links)}, caption =""" # The instruction for updating the post
+        query = f"""UPDATE Post SET number_of_items = {len(links)}, caption =""" # The query for updating the post
 
-            if caption is None or caption == "":
-                instruction += " NULL," # If the caption is empty
+        if caption is None or caption == "":
+            query += " NULL," # If the caption is empty
 
-            else:
-                instruction += f""" \"{caption}\", """
+        else:
+            query += f""" \"{caption}\", """
 
-            instruction += f"""timestamp = {timestamp} WHERE post_code = \"{post_code}\" AND is_tag = {is_tag}"""
+        query += f"""timestamp = {timestamp} WHERE post_code = \"{post_code}\" AND is_tag = {is_tag}"""
 
-            dbCursor.execute(instruction) # Update the post in the database
-            connection.commit() # Commit the changes
-        
-        except:
-            connection.rollback() # Rollback the changes
-            return False # Couldn't update the post in the database
+        result = execute_query(queries=[query], commit=True, fetch=None) # Update the post in the database
+
+        if result == False:
+            return False # Couldn't update the post in the database 
         
         return True # The post is downloaded
     
     except:
         return False # Couldn't download the post
 
-def downloadPosts(username, is_tag, direct_call = True): # Downloads the (tagged/normal) posts of the profile
+def download_posts(username, is_tag, direct_call=True):
+    '''
+    Downloads the (tagged/normal) posts of the profile
+
+    Parameters:
+        username (str): The username of the profile
+        is_tag (bool): If the posts are tagged posts
+        direct_call (bool): If the function is called directly or not
+    
+    Returns:
+        status (bool): If the posts are downloaded
+    '''
+
     try:
         if direct_call: # If the function is called directly
-            updated = updateProfile(username, False) # Update the profile
+            updated = update_profile(username=username, with_highlights=False) # Update the profile
 
             if not updated:
                 print("Couldn't update the profile!")
         
-        result = dbCursor.execute(f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\"""")
-        pk, is_private = result.fetchone() # Get the pk and is_private of the profile
+        query = [f"""SELECT pk, is_private FROM Profile WHERE username = \"{username}\""""]
+
+        result = execute_query(queries=query, commit=False, fetch=False)
+
+        if result == False:
+            return False # There was an error
+        
+        pk, is_private = result # Get the pk and is_private of the profile
 
         if is_private == 1: # If the account is private
             print("This account is private!")
             return False # It's not possible to download the posts of a private account
+        
+        add_posts_codes(pk, username, is_tag) # Add the (tagged/normal) posts codes of the profile
 
-        addPostsCodes(pk, username, is_tag) # Add the (tagged/normal) posts codes of the profile
+        query = [f"""SELECT post_code FROM Post WHERE pk = {pk} AND
+                 is_tag = {is_tag} AND number_of_items IS NULL"""]
+        
+        result = execute_query(queries=query, commit=False, fetch=True)
 
-        result = dbCursor.execute(f"""SELECT post_code FROM Post WHERE pk = {pk} AND
-                                  is_tag = {is_tag} AND number_of_items IS NULL""")
-        posts = result.fetchall() # Get the list of posts that are not downloaded yet
+        if result == False:
+            return False # There was an error
+        
+        posts = result # Get the list of posts that are not downloaded yet
+
+        folder_name = find_folder_name(pk=pk) # Get the folder name for the profile
 
         if is_tag: # If the posts are tagged posts
-            address = f"/{username}/Tagged" # The address for the tagged posts
+            address = os.path.join(f"{folder_name}", "Tagged") # The address for the tagged posts
         
         else:
-            address = f"/{username}/Posts" # The address for the normal posts
-
-        if not os.path.exists(path + address):
-            os.mkdir(path + address) # Make the folder for the posts
+            address = os.path.join(f"{folder_name}", "Posts") # The address for the normal posts
+        
+        if not os.path.exists(os.path.join(path, address)):
+            os.mkdir(os.path.join(path, address)) # Make the folder for the posts
         
         for post in posts:
             try:
-                downloadSinglePost(post[0], is_tag, address) # Download the post
+                download_single_post(post[0], is_tag, address) # Download the post
             
             except:
                 continue # Couldn't download the post, skip and try the next one
