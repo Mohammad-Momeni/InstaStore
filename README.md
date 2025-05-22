@@ -17,8 +17,8 @@
   - _…and more functions you can call directly from Python_  
 
 - **Data Storage**  
-  - All profiles, their settings, and download history live in a local SQLite file (`instastore.db` by default).  
-  - Media files are saved into structured folders (e.g. `downloads/<username>/posts/`, `…/stories/`, etc.), alongside JSON metadata (captions, timestamps, like counts).
+  - All profiles, their settings, and download history live in a local SQLite file (`storage/data.db` by default).  
+  - Media files are saved into structured folders (e.g. `storage/<username>/posts/`, `…/stories/`, etc.), alongside JSON metadata (captions, timestamps, like counts).
 
 ---
 
@@ -44,7 +44,7 @@
 
 2. **Use in your own scripts**  
    ```python
-   from instastore import add_profile, update_profile, download_posts
+   from main import add_profile, update_profile, download_posts
 
    # 1) Add a new profile to the database
    add_profile("nasa")
@@ -53,7 +53,7 @@
    update_profile("nasa")
 
    # 3) …and grab all their posts
-   download_posts("nasa")
+   download_posts("nasa", is_tag)
    ```
 
 > **Note:** All functions are currently exposed as Python callables—you import the module and invoke them directly. A GUI interface is on the roadmap!
