@@ -11,9 +11,9 @@
   - `update_profile(username)` – refresh the metadata (e.g. new posts, stories) for an existing profile  
 
 - **Content Download**  
-  - `download_posts(username)` – bulk-download every post (photos & videos)  
-  - `download_single_highlight_stories(username)` – download all available stories of a highlight or profile's stories  
-  - `download_highlights_stories(username)` – download every highlights stories  
+  - `download_posts` – bulk-download every post (photos & videos)  
+  - `download_single_highlight_stories` – download all available stories of a highlight or profile's stories  
+  - `download_highlights_stories` – download every highlights stories  
   - _…and more functions you can call directly from Python_  
 
 - **Data Storage**  
